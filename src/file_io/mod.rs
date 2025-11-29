@@ -2,9 +2,30 @@
 //!
 //! This module handles reading and writing text files with atomic writes
 //! and proper error handling.
+//!
+//! # Examples
+//!
+//! ```no_run
+//! use std::path::Path;
+//! use termide::file_io::{read_file, write_file};
+//!
+//! # fn main() -> Result<(), anyhow::Error> {
+//! let path = Path::new("example.txt");
+//!
+//! // Read a file
+//! let content = read_file(path)?;
+//!
+//! // Write content to a file
+//! write_file(path, "Hello, world!")?;
+//! # Ok(())
+//! # }
+//! ```
 
-// TODO: Implement read_file function with UTF-8 encoding
-// TODO: Implement write_file with atomic write strategy (temp file + rename)
-// TODO: Add proper error handling with user-friendly messages
-// TODO: Handle file permissions preservation
-// TODO: Add validation for invalid UTF-8
+mod read;
+mod write;
+
+#[cfg(test)]
+mod tests;
+
+pub use read::read_file;
+pub use write::write_file;
