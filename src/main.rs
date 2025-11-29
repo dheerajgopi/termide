@@ -3,6 +3,7 @@
 //! A fast, efficient text editor built with Rust, designed for terminal environments.
 
 mod buffer;
+mod editor;
 mod file_io;
 mod input;
 mod ui;
