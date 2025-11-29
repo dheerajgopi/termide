@@ -21,7 +21,7 @@ use super::{EditorCommand, Direction};
 ///
 /// # Key Mappings
 ///
-/// ## Special Keys (work in both modes)
+/// ## Special Keys (work in all modes except Prompt)
 /// - `Ctrl+S` → Save
 /// - `Ctrl+Q` → Quit
 ///
@@ -34,6 +34,12 @@ use super::{EditorCommand, Direction};
 /// ## Normal Mode
 /// - `i` → ChangeMode(Insert)
 /// - Arrow keys → MoveCursor
+///
+/// ## Prompt Mode
+/// - Printable characters → PromptInsertChar
+/// - `Backspace` → PromptDeleteChar
+/// - `Enter` → AcceptPrompt
+/// - `Esc` → CancelPrompt
 ///
 /// # Examples
 ///
@@ -90,6 +96,7 @@ pub fn handle_key_event(event: KeyEvent, mode: EditorMode) -> Option<EditorComma
     match mode {
         EditorMode::Insert => handle_insert_mode(event),
         EditorMode::Normal => handle_normal_mode(event),
+        EditorMode::Prompt => handle_prompt_mode(event),
     }
 }
 
@@ -134,6 +141,28 @@ fn handle_normal_mode(event: KeyEvent) -> Option<EditorCommand> {
         KeyCode::Down => Some(EditorCommand::MoveCursor(Direction::Down)),
         KeyCode::Left => Some(EditorCommand::MoveCursor(Direction::Left)),
         KeyCode::Right => Some(EditorCommand::MoveCursor(Direction::Right)),
+
+        // Unmapped keys - ignore
+        _ => None,
+    }
+}
+
+/// Handles key events in Prompt mode
+fn handle_prompt_mode(event: KeyEvent) -> Option<EditorCommand> {
+    match event.code {
+        // Printable characters - insert into prompt input (only if no special modifiers except SHIFT)
+        KeyCode::Char(c) if !event.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
+            Some(EditorCommand::PromptInsertChar(c))
+        }
+
+        // Backspace - delete character from prompt input
+        KeyCode::Backspace => Some(EditorCommand::PromptDeleteChar),
+
+        // Enter - accept prompt input
+        KeyCode::Enter => Some(EditorCommand::AcceptPrompt),
+
+        // Escape - cancel prompt
+        KeyCode::Esc => Some(EditorCommand::CancelPrompt),
 
         // Unmapped keys - ignore
         _ => None,

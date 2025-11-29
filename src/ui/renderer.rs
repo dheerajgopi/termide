@@ -25,6 +25,8 @@ fn render_frame_impl(
     cursor_pos: Position,
     scroll_offset: usize,
 ) {
+    use crate::editor::EditorMode;
+
     let size = frame.area();
 
     // Split the terminal into text area and status area
@@ -43,9 +45,17 @@ fn render_frame_impl(
     render_status_bar(frame, chunks[1], state, cursor_pos);
 
     // Set cursor position
-    let cursor_screen_pos = calculate_cursor_screen_position(cursor_pos, chunks[0], scroll_offset);
-    if let Some((x, y)) = cursor_screen_pos {
-        frame.set_cursor_position((x, y));
+    if state.mode() == EditorMode::Prompt {
+        // In prompt mode, cursor is in the prompt input
+        let prompt_cursor_x = chunks[1].x + state.prompt_message().len() as u16 + state.prompt_input().len() as u16;
+        let prompt_cursor_y = chunks[1].y + 1; // Second line of status area
+        frame.set_cursor_position((prompt_cursor_x, prompt_cursor_y));
+    } else {
+        // Normal/Insert mode, cursor is in the text area
+        let cursor_screen_pos = calculate_cursor_screen_position(cursor_pos, chunks[0], scroll_offset);
+        if let Some((x, y)) = cursor_screen_pos {
+            frame.set_cursor_position((x, y));
+        }
     }
 }
 
@@ -84,12 +94,14 @@ fn render_text_area(
 
 /// Renders the status bar and status message
 fn render_status_bar(frame: &mut Frame, area: Rect, state: &EditorState, cursor_pos: Position) {
+    use crate::editor::EditorMode;
+
     // Split status area into bar and message
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1), // Status bar
-            Constraint::Length(1), // Status message
+            Constraint::Length(1), // Status message or prompt
         ])
         .split(area);
 
@@ -119,8 +131,18 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &EditorState, cursor_
 
     frame.render_widget(status_bar, chunks[0]);
 
-    // Render status message if present
-    if let Some(message) = state.status_message() {
+    // Render prompt or status message
+    if state.mode() == EditorMode::Prompt {
+        // Display prompt input
+        let prompt_text = format!("{}{}", state.prompt_message(), state.prompt_input());
+        let prompt_widget = Paragraph::new(prompt_text).style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        );
+        frame.render_widget(prompt_widget, chunks[1]);
+    } else if let Some(message) = state.status_message() {
+        // Render status message if present
         let message_style = if message.starts_with("Warning:") || message.starts_with("Error:") {
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
         } else {
@@ -332,9 +354,12 @@ impl Renderer {
     /// Calculates a simple hash of the current frame state for dirty checking
     ///
     /// This is a simple hash based on buffer content length, cursor position,
-    /// mode, and status message. It's not perfect but good enough for skipping
-    /// unchanged frames.
+    /// mode, status message, and prompt state. It's not perfect but good enough
+    /// for skipping unchanged frames.
     fn calculate_frame_hash(&self, state: &EditorState, cursor_pos: Position) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
         let mut hash = 0u64;
 
         // Include buffer state
@@ -350,6 +375,7 @@ impl Renderer {
         hash ^= match state.mode() {
             crate::editor::EditorMode::Insert => 1,
             crate::editor::EditorMode::Normal => 2,
+            crate::editor::EditorMode::Prompt => 3,
         } << 40;
 
         // Include status message presence
@@ -361,6 +387,14 @@ impl Renderer {
 
         // Include scroll offset
         hash ^= (self.scroll_offset as u64) << 56;
+
+        // Include prompt input if in prompt mode
+        if state.mode() == crate::editor::EditorMode::Prompt {
+            let mut hasher = DefaultHasher::new();
+            state.prompt_input().hash(&mut hasher);
+            state.prompt_message().hash(&mut hasher);
+            hash ^= hasher.finish();
+        }
 
         hash
     }

@@ -115,16 +115,15 @@ fn test_set_file_path() {
 }
 
 #[test]
-fn test_save_without_file_path() {
+fn test_save_without_file_path_enters_prompt() {
     let mut state = EditorState::new();
     state.handle_char_insert('A', Position::origin());
 
     let result = state.save();
-    assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("No file path associated with buffer"));
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), false); // Did not save, entered prompt mode instead
+    assert_eq!(state.mode(), EditorMode::Prompt);
+    assert_eq!(state.prompt_message(), "Save as: ");
 }
 
 #[test]
@@ -137,4 +136,86 @@ fn test_buffer_access() {
     // Test mutable access
     state.buffer_mut().insert_char('X', Position::origin());
     assert_eq!(state.buffer().content(), "X");
+}
+
+#[test]
+fn test_enter_prompt() {
+    let mut state = EditorState::new();
+    assert_eq!(state.mode(), EditorMode::Insert);
+
+    state.enter_prompt("Enter filename: ".to_string());
+    assert_eq!(state.mode(), EditorMode::Prompt);
+    assert_eq!(state.prompt_message(), "Enter filename: ");
+    assert_eq!(state.prompt_input(), "");
+}
+
+#[test]
+fn test_prompt_insert_char() {
+    let mut state = EditorState::new();
+    state.enter_prompt("Save as: ".to_string());
+
+    state.prompt_insert_char('t');
+    assert_eq!(state.prompt_input(), "t");
+
+    state.prompt_insert_char('e');
+    state.prompt_insert_char('s');
+    state.prompt_insert_char('t');
+    assert_eq!(state.prompt_input(), "test");
+}
+
+#[test]
+fn test_prompt_delete_char() {
+    let mut state = EditorState::new();
+    state.enter_prompt("Save as: ".to_string());
+
+    state.prompt_insert_char('t');
+    state.prompt_insert_char('e');
+    state.prompt_insert_char('s');
+    state.prompt_insert_char('t');
+    assert_eq!(state.prompt_input(), "test");
+
+    state.prompt_delete_char();
+    assert_eq!(state.prompt_input(), "tes");
+
+    state.prompt_delete_char();
+    state.prompt_delete_char();
+    assert_eq!(state.prompt_input(), "t");
+
+    state.prompt_delete_char();
+    assert_eq!(state.prompt_input(), "");
+}
+
+#[test]
+fn test_accept_prompt() {
+    let mut state = EditorState::new();
+    state.set_mode(EditorMode::Normal);
+    state.enter_prompt("Save as: ".to_string());
+
+    state.prompt_insert_char('t');
+    state.prompt_insert_char('e');
+    state.prompt_insert_char('s');
+    state.prompt_insert_char('t');
+
+    let result = state.accept_prompt();
+    assert_eq!(result, "test");
+    assert_eq!(state.mode(), EditorMode::Normal); // Returns to previous mode
+    assert_eq!(state.prompt_input(), "");
+    assert_eq!(state.prompt_message(), "");
+}
+
+#[test]
+fn test_cancel_prompt() {
+    let mut state = EditorState::new();
+    state.set_mode(EditorMode::Insert);
+    state.enter_prompt("Save as: ".to_string());
+
+    state.prompt_insert_char('t');
+    state.prompt_insert_char('e');
+    state.prompt_insert_char('s');
+    state.prompt_insert_char('t');
+
+    state.cancel_prompt();
+    assert_eq!(state.mode(), EditorMode::Insert); // Returns to previous mode
+    assert_eq!(state.prompt_input(), "");
+    assert_eq!(state.prompt_message(), "");
 }

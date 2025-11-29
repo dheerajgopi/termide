@@ -12,4 +12,5 @@ fn test_editor_mode_default() {
 fn test_editor_mode_to_string() {
     assert_eq!(EditorMode::Insert.to_string(), "INSERT");
     assert_eq!(EditorMode::Normal.to_string(), "NORMAL");
+    assert_eq!(EditorMode::Prompt.to_string(), "PROMPT");
 }

@@ -183,8 +183,9 @@ fn execute_command(
         }
         EditorCommand::Save => {
             match state.save() {
-                Ok(()) => {
-                    // Status message already set by save()
+                Ok(_saved) => {
+                    // Status message already set by save() if file was saved
+                    // If not saved, we're now in prompt mode
                 }
                 Err(e) => {
                     state.set_status_message(format!("Error: {:#}", e));
@@ -198,6 +199,32 @@ fn execute_command(
             state.set_mode(mode);
             // Clear status message when changing modes
             state.clear_status_message();
+        }
+        EditorCommand::PromptInsertChar(ch) => {
+            state.prompt_insert_char(ch);
+        }
+        EditorCommand::PromptDeleteChar => {
+            state.prompt_delete_char();
+        }
+        EditorCommand::AcceptPrompt => {
+            let filename = state.accept_prompt();
+            if !filename.is_empty() {
+                // Save the file with the given filename
+                match state.save_as(Path::new(&filename)) {
+                    Ok(()) => {
+                        // Status message already set by save_as()
+                    }
+                    Err(e) => {
+                        state.set_status_message(format!("Error: {:#}", e));
+                    }
+                }
+            } else {
+                state.set_status_message("Filename cannot be empty".to_string());
+            }
+        }
+        EditorCommand::CancelPrompt => {
+            state.cancel_prompt();
+            state.set_status_message("Save cancelled".to_string());
         }
     }
 

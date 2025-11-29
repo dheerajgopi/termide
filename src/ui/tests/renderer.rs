@@ -284,6 +284,7 @@ fn calculate_test_hash(state: &EditorState, cursor_pos: Position) -> u64 {
     hash ^= match state.mode() {
         EditorMode::Insert => 1,
         EditorMode::Normal => 2,
+        EditorMode::Prompt => 3,
     } << 40;
 
     // Include status message presence

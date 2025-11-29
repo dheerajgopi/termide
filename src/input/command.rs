@@ -27,6 +27,10 @@ use super::Direction;
 /// // File operations
 /// let cmd = EditorCommand::Save;
 /// let cmd = EditorCommand::Quit;
+///
+/// // Prompt operations
+/// let cmd = EditorCommand::PromptInsertChar('a');
+/// let cmd = EditorCommand::AcceptPrompt;
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditorCommand {
@@ -47,4 +51,16 @@ pub enum EditorCommand {
 
     /// Change the editor mode
     ChangeMode(EditorMode),
+
+    /// Insert a character in the prompt input
+    PromptInsertChar(char),
+
+    /// Delete a character from the prompt input
+    PromptDeleteChar,
+
+    /// Accept the prompt input (Enter key)
+    AcceptPrompt,
+
+    /// Cancel the prompt (Esc key)
+    CancelPrompt,
 }

@@ -429,3 +429,116 @@ fn test_multiple_modifiers_ctrl_takes_precedence() {
         Some(EditorCommand::Save)
     );
 }
+
+// ============================================================================
+// Prompt Mode Tests
+// ============================================================================
+
+#[test]
+fn test_prompt_mode_printable_characters() {
+    let mode = EditorMode::Prompt;
+
+    // Regular characters should insert into prompt
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE), mode),
+        Some(EditorCommand::PromptInsertChar('a'))
+    );
+
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Char('Z'), KeyModifiers::NONE), mode),
+        Some(EditorCommand::PromptInsertChar('Z'))
+    );
+
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Char('5'), KeyModifiers::NONE), mode),
+        Some(EditorCommand::PromptInsertChar('5'))
+    );
+
+    // Special characters
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Char('.'), KeyModifiers::NONE), mode),
+        Some(EditorCommand::PromptInsertChar('.'))
+    );
+
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE), mode),
+        Some(EditorCommand::PromptInsertChar('/'))
+    );
+
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Char('_'), KeyModifiers::NONE), mode),
+        Some(EditorCommand::PromptInsertChar('_'))
+    );
+}
+
+#[test]
+fn test_prompt_mode_backspace() {
+    let mode = EditorMode::Prompt;
+
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE), mode),
+        Some(EditorCommand::PromptDeleteChar)
+    );
+}
+
+#[test]
+fn test_prompt_mode_enter_accepts() {
+    let mode = EditorMode::Prompt;
+
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), mode),
+        Some(EditorCommand::AcceptPrompt)
+    );
+}
+
+#[test]
+fn test_prompt_mode_escape_cancels() {
+    let mode = EditorMode::Prompt;
+
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), mode),
+        Some(EditorCommand::CancelPrompt)
+    );
+}
+
+#[test]
+fn test_prompt_mode_ignores_ctrl_s_and_ctrl_q() {
+    let mode = EditorMode::Prompt;
+
+    // In prompt mode, Ctrl+S and Ctrl+Q should still work
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL), mode),
+        Some(EditorCommand::Save)
+    );
+
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL), mode),
+        Some(EditorCommand::Quit)
+    );
+}
+
+#[test]
+fn test_prompt_mode_arrow_keys_ignored() {
+    let mode = EditorMode::Prompt;
+
+    // Arrow keys don't do anything in prompt mode
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE), mode),
+        None
+    );
+
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE), mode),
+        None
+    );
+
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE), mode),
+        None
+    );
+
+    assert_eq!(
+        handle_key_event(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE), mode),
+        None
+    );
+}

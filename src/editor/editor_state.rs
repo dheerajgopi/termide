@@ -45,6 +45,12 @@ pub struct EditorState {
     status_message: Option<String>,
     /// Flag indicating the editor should quit
     should_quit: bool,
+    /// Current prompt input text (used in Prompt mode)
+    prompt_input: String,
+    /// Prompt message to display (used in Prompt mode)
+    prompt_message: String,
+    /// Previous mode before entering Prompt mode
+    previous_mode: EditorMode,
 }
 
 impl EditorState {
@@ -66,6 +72,9 @@ impl EditorState {
             mode: EditorMode::Insert,
             status_message: None,
             should_quit: false,
+            prompt_input: String::new(),
+            prompt_message: String::new(),
+            previous_mode: EditorMode::Insert,
         }
     }
 
@@ -110,6 +119,9 @@ impl EditorState {
             mode: EditorMode::Insert,
             status_message: None,
             should_quit: false,
+            prompt_input: String::new(),
+            prompt_message: String::new(),
+            previous_mode: EditorMode::Insert,
         })
     }
 
@@ -264,13 +276,62 @@ impl EditorState {
         self.buffer.set_file_path(path.to_path_buf());
     }
 
+    /// Returns the current prompt input text
+    pub fn prompt_input(&self) -> &str {
+        &self.prompt_input
+    }
+
+    /// Returns the current prompt message
+    pub fn prompt_message(&self) -> &str {
+        &self.prompt_message
+    }
+
+    /// Enters prompt mode with the given message
+    ///
+    /// Saves the current mode and switches to Prompt mode, displaying the given message.
+    pub fn enter_prompt(&mut self, message: String) {
+        self.previous_mode = self.mode;
+        self.mode = EditorMode::Prompt;
+        self.prompt_message = message;
+        self.prompt_input.clear();
+    }
+
+    /// Appends a character to the prompt input
+    pub fn prompt_insert_char(&mut self, ch: char) {
+        self.prompt_input.push(ch);
+    }
+
+    /// Deletes the last character from the prompt input
+    pub fn prompt_delete_char(&mut self) {
+        self.prompt_input.pop();
+    }
+
+    /// Accepts the prompt input and returns to the previous mode
+    ///
+    /// Returns the prompt input text.
+    pub fn accept_prompt(&mut self) -> String {
+        self.mode = self.previous_mode;
+        let input = self.prompt_input.clone();
+        self.prompt_input.clear();
+        self.prompt_message.clear();
+        input
+    }
+
+    /// Cancels the prompt and returns to the previous mode
+    pub fn cancel_prompt(&mut self) {
+        self.mode = self.previous_mode;
+        self.prompt_input.clear();
+        self.prompt_message.clear();
+    }
+
     /// Saves the buffer to its associated file
+    ///
+    /// If no file path is associated, enters Prompt mode to ask for a filename.
+    /// Returns `true` if the file was saved, `false` if a filename prompt was started.
     ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - No file path is associated with the buffer
-    /// - The file cannot be written (permissions, disk full, etc.)
+    /// Returns an error if the file cannot be written (permissions, disk full, etc.)
     ///
     /// # Examples
     ///
@@ -290,15 +351,36 @@ impl EditorState {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn save(&mut self) -> Result<()> {
-        let path = self
-            .buffer
-            .file_path()
-            .ok_or_else(|| anyhow::anyhow!("No file path associated with buffer"))?;
+    pub fn save(&mut self) -> Result<bool> {
+        if self.buffer.file_path().is_none() {
+            // No file path - enter prompt mode to ask for filename
+            self.enter_prompt("Save as: ".to_string());
+            return Ok(false);
+        }
+
+        let path = self.buffer.file_path().unwrap();
 
         write_file(path, &self.buffer.content())
             .with_context(|| format!("Failed to save file: {}", path.display()))?;
 
+        self.buffer.clear_dirty();
+        self.set_status_message("Saved successfully".to_string());
+
+        Ok(true)
+    }
+
+    /// Saves the buffer to a specific file path
+    ///
+    /// Sets the buffer's file path and writes the content.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be written (permissions, disk full, etc.)
+    pub fn save_as(&mut self, path: &Path) -> Result<()> {
+        write_file(path, &self.buffer.content())
+            .with_context(|| format!("Failed to save file: {}", path.display()))?;
+
+        self.buffer.set_file_path(path.to_path_buf());
         self.buffer.clear_dirty();
         self.set_status_message("Saved successfully".to_string());
 
