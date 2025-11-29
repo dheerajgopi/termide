@@ -1,0 +1,18 @@
+[package]
+name = "termide"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ropey = "1.6"
+crossterm = "0.29"
+ratatui = "0.29"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.9"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
+codegen-units = 1
