@@ -2,19 +2,343 @@
 //!
 //! A fast, efficient text editor built with Rust, designed for terminal environments.
 
+use std::env;
+use std::io;
+use std::panic;
+use std::path::Path;
+use std::time::Duration;
+
+use anyhow::{Context, Result};
+use crossterm::{
+    event::{self, Event, KeyEvent},
+    terminal::{disable_raw_mode, enable_raw_mode},
+};
+
+use termide::buffer::Position;
+use termide::editor::{EditorMode, EditorState};
+use termide::input::{handle_key_event, Direction, EditorCommand};
+use termide::ui::Renderer;
+
 mod buffer;
 mod editor;
 mod file_io;
 mod input;
 mod ui;
 
-fn main() {
-    println!("TermIDE v0.1.0 - Base Editor");
-    println!("Project structure initialized.");
+fn main() -> Result<()> {
+    // Set up panic handler to ensure terminal cleanup
+    setup_panic_handler();
 
-    // TODO: Implement CLI argument parsing
-    // TODO: Initialize terminal in raw mode
-    // TODO: Create main event loop
-    // TODO: Integrate all modules
-    // TODO: Add graceful shutdown with terminal restoration
+    // Parse CLI arguments
+    let args: Vec<String> = env::args().collect();
+    let file_path = parse_args(&args)?;
+
+    // Initialize editor state
+    let mut state = if let Some(path) = file_path {
+        EditorState::from_file(Path::new(&path))
+            .with_context(|| format!("Failed to initialize editor with file: {}", path))?
+    } else {
+        EditorState::new()
+    };
+
+    // Initialize terminal and renderer
+    enable_raw_mode().context("Failed to enable raw terminal mode")?;
+    let mut renderer = Renderer::new().context("Failed to initialize renderer")?;
+
+    // Initialize cursor position
+    let mut cursor = Position::origin();
+
+    // Main event loop
+    let result = run_event_loop(&mut state, &mut renderer, &mut cursor);
+
+    // Clean up terminal
+    disable_raw_mode().context("Failed to disable raw terminal mode")?;
+    renderer.restore_terminal().context("Failed to restore terminal")?;
+
+    result
+}
+
+/// Parse command-line arguments
+///
+/// Returns the file path if provided, or None for a new empty buffer.
+///
+/// # Errors
+///
+/// Returns an error with usage information if invalid arguments are provided.
+fn parse_args(args: &[String]) -> Result<Option<String>> {
+    match args.len() {
+        1 => {
+            // No arguments - new empty buffer
+            Ok(None)
+        }
+        2 => {
+            // One argument - file path
+            Ok(Some(args[1].clone()))
+        }
+        _ => {
+            // Too many arguments
+            anyhow::bail!(
+                "Usage: {} [file_path]\n\nArguments:\n  file_path    Optional path to file to open or create",
+                args[0]
+            );
+        }
+    }
+}
+
+/// Main event loop: read input → process → render
+///
+/// This loop runs until the user quits the editor.
+fn run_event_loop(
+    state: &mut EditorState,
+    renderer: &mut Renderer,
+    cursor: &mut Position,
+) -> Result<()> {
+    loop {
+        // Render current state
+        renderer.render(state, *cursor)?;
+
+        // Check if we should quit
+        if state.should_quit() {
+            break;
+        }
+
+        // Read input event with timeout
+        if event::poll(Duration::from_millis(100))? {
+            if let Event::Key(key_event) = event::read()? {
+                process_key_event(state, cursor, key_event)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Process a key event by mapping it to a command and executing it
+fn process_key_event(
+    state: &mut EditorState,
+    cursor: &mut Position,
+    key_event: KeyEvent,
+) -> Result<()> {
+    // Map key event to command based on current mode
+    let command = handle_key_event(key_event, state.mode());
+
+    // Execute command if one was generated
+    if let Some(cmd) = command {
+        execute_command(state, cursor, cmd)?;
+    }
+
+    Ok(())
+}
+
+/// Execute an editor command, updating state and cursor position
+fn execute_command(
+    state: &mut EditorState,
+    cursor: &mut Position,
+    command: EditorCommand,
+) -> Result<()> {
+    match command {
+        EditorCommand::InsertChar(ch) => {
+            state.handle_char_insert(ch, *cursor);
+            // Move cursor after insertion
+            if ch == '\n' {
+                // Newline: move to start of next line
+                cursor.line += 1;
+                cursor.column = 0;
+            } else {
+                // Regular character: move right
+                cursor.column += 1;
+            }
+            // Clear status message on typing
+            state.clear_status_message();
+        }
+        EditorCommand::DeleteChar => {
+            if cursor.column > 0 {
+                // Delete character before cursor (same line)
+                cursor.column -= 1;
+                state.handle_char_delete(*cursor);
+            } else if cursor.line > 0 {
+                // At start of line - join with previous line
+                let prev_line_len = state
+                    .buffer()
+                    .get_line(cursor.line - 1)
+                    .map(|line| {
+                        // Remove trailing newline if present
+                        if line.ends_with('\n') {
+                            line.len() - 1
+                        } else {
+                            line.len()
+                        }
+                    })
+                    .unwrap_or(0);
+
+                cursor.line -= 1;
+                cursor.column = prev_line_len;
+                state.handle_char_delete(*cursor);
+            }
+            // Clear status message on editing
+            state.clear_status_message();
+        }
+        EditorCommand::MoveCursor(direction) => {
+            move_cursor(cursor, direction, state);
+        }
+        EditorCommand::Save => {
+            match state.save() {
+                Ok(()) => {
+                    // Status message already set by save()
+                }
+                Err(e) => {
+                    state.set_status_message(format!("Error: {:#}", e));
+                }
+            }
+        }
+        EditorCommand::Quit => {
+            state.request_quit();
+        }
+        EditorCommand::ChangeMode(mode) => {
+            state.set_mode(mode);
+            // Clear status message when changing modes
+            state.clear_status_message();
+        }
+    }
+
+    Ok(())
+}
+
+/// Move cursor in the specified direction, respecting buffer boundaries
+fn move_cursor(cursor: &mut Position, direction: Direction, state: &EditorState) {
+    let buffer = state.buffer();
+
+    match direction {
+        Direction::Up => {
+            if cursor.line > 0 {
+                cursor.line -= 1;
+                // Clamp column to line length
+                cursor.column = clamp_column_to_line(cursor.line, cursor.column, buffer);
+            }
+        }
+        Direction::Down => {
+            if cursor.line + 1 < buffer.line_count() {
+                cursor.line += 1;
+                // Clamp column to line length
+                cursor.column = clamp_column_to_line(cursor.line, cursor.column, buffer);
+            }
+        }
+        Direction::Left => {
+            if cursor.column > 0 {
+                cursor.column -= 1;
+            } else if cursor.line > 0 {
+                // Move to end of previous line
+                cursor.line -= 1;
+                cursor.column = buffer
+                    .get_line(cursor.line)
+                    .map(|line| {
+                        if line.ends_with('\n') {
+                            line.len().saturating_sub(1)
+                        } else {
+                            line.len()
+                        }
+                    })
+                    .unwrap_or(0);
+            }
+        }
+        Direction::Right => {
+            let line_len = buffer
+                .get_line(cursor.line)
+                .map(|line| {
+                    if line.ends_with('\n') {
+                        line.len().saturating_sub(1)
+                    } else {
+                        line.len()
+                    }
+                })
+                .unwrap_or(0);
+
+            if cursor.column < line_len {
+                cursor.column += 1;
+            } else if cursor.line + 1 < buffer.line_count() {
+                // Move to start of next line
+                cursor.line += 1;
+                cursor.column = 0;
+            }
+        }
+    }
+}
+
+/// Clamp column to the length of the current line
+fn clamp_column_to_line(line: usize, column: usize, buffer: &termide::buffer::Buffer) -> usize {
+    buffer
+        .get_line(line)
+        .map(|line_content| {
+            let len = if line_content.ends_with('\n') {
+                line_content.len().saturating_sub(1)
+            } else {
+                line_content.len()
+            };
+            column.min(len)
+        })
+        .unwrap_or(0)
+}
+
+/// Set up panic handler to ensure terminal is restored even on panic
+fn setup_panic_handler() {
+    let original_hook = panic::take_hook();
+
+    panic::set_hook(Box::new(move |panic_info| {
+        // Attempt to restore terminal
+        let _ = disable_raw_mode();
+        let _ = crossterm::execute!(io::stdout(), crossterm::terminal::LeaveAlternateScreen);
+
+        // Call the original panic hook
+        original_hook(panic_info);
+    }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_args_no_file() {
+        let args = vec!["termide".to_string()];
+        let result = parse_args(&args).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_args_with_file() {
+        let args = vec!["termide".to_string(), "test.txt".to_string()];
+        let result = parse_args(&args).unwrap();
+        assert_eq!(result, Some("test.txt".to_string()));
+    }
+
+    #[test]
+    fn test_parse_args_too_many() {
+        let args = vec![
+            "termide".to_string(),
+            "file1.txt".to_string(),
+            "file2.txt".to_string(),
+        ];
+        let result = parse_args(&args);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Usage:"));
+    }
+
+    #[test]
+    fn test_clamp_column_to_line() {
+        let mut buffer = termide::buffer::Buffer::new();
+        buffer.insert_char('H', Position::origin());
+        buffer.insert_char('e', Position::new(0, 1));
+        buffer.insert_char('l', Position::new(0, 2));
+        buffer.insert_char('l', Position::new(0, 3));
+        buffer.insert_char('o', Position::new(0, 4));
+
+        // Column within bounds
+        assert_eq!(clamp_column_to_line(0, 3, &buffer), 3);
+
+        // Column beyond line length
+        assert_eq!(clamp_column_to_line(0, 10, &buffer), 5);
+
+        // Empty line
+        assert_eq!(clamp_column_to_line(1, 5, &buffer), 0);
+    }
 }
