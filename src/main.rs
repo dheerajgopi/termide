@@ -219,12 +219,12 @@ fn execute_command(
                     }
                 }
             } else {
-                state.set_status_message("Filename cannot be empty".to_string());
+                state.set_status_message("Error: Filename cannot be empty. Press Esc to cancel.".to_string());
             }
         }
         EditorCommand::CancelPrompt => {
             state.cancel_prompt();
-            state.set_status_message("Save cancelled".to_string());
+            state.set_status_message("Info: Save cancelled".to_string());
         }
     }
 

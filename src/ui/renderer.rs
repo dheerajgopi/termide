@@ -142,10 +142,15 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &EditorState, cursor_
         );
         frame.render_widget(prompt_widget, chunks[1]);
     } else if let Some(message) = state.status_message() {
-        // Render status message if present
-        let message_style = if message.starts_with("Warning:") || message.starts_with("Error:") {
+        // Render status message with appropriate color based on type
+        let message_style = if message.starts_with("Error:") || message.starts_with("Warning:") {
+            // Errors and warnings in red
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+        } else if message.starts_with("Info:") {
+            // Informational messages in cyan
+            Style::default().fg(Color::Cyan)
         } else {
+            // Success messages in green
             Style::default().fg(Color::Green)
         };
 
