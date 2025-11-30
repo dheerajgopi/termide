@@ -427,5 +427,449 @@ fn test_multiple_priorities_can_coexist() {
     registry.register(user).expect("user");
 
     assert_eq!(registry.len(), 3);
-    // Priority ordering will be validated through matching tests in T004
+    // Priority ordering will be validated through matching tests below
+}
+
+// ============================================================================
+// Sequence Matching Tests
+// ============================================================================
+
+#[test]
+fn test_add_to_sequence() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    let pattern1 = KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE);
+    let pattern2 = KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE);
+
+    registry.add_to_sequence(pattern1);
+    registry.add_to_sequence(pattern2);
+
+    // Buffer should contain both patterns (verified through matching tests)
+}
+
+#[test]
+fn test_find_match_single_key() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register 'i' to enter insert mode in Normal mode
+    let binding = create_binding(
+        'i',
+        KeyModifiers::NONE,
+        EditorCommand::ChangeMode(EditorMode::Insert),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+    registry.register(binding).expect("registration");
+
+    // No match before adding to sequence
+    assert_eq!(registry.find_match(EditorMode::Normal), None);
+
+    // Add 'i' to sequence
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('i'), KeyModifiers::NONE));
+
+    // Should match in Normal mode
+    let result = registry.find_match(EditorMode::Normal);
+    assert!(result.is_some());
+    assert_eq!(result.unwrap(), &EditorCommand::ChangeMode(EditorMode::Insert));
+
+    // Should not match in Insert mode (wrong context)
+    assert_eq!(registry.find_match(EditorMode::Insert), None);
+}
+
+#[test]
+fn test_find_match_multi_key_sequence() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register "dd" for delete in Normal mode
+    let binding = create_sequence_binding(
+        'd',
+        'd',
+        EditorCommand::DeleteChar,
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+    registry.register(binding).expect("registration");
+
+    // Add first 'd' - no match yet
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    assert_eq!(registry.find_match(EditorMode::Normal), None);
+
+    // Add second 'd' - now we have a match
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    let result = registry.find_match(EditorMode::Normal);
+    assert!(result.is_some());
+    assert_eq!(result.unwrap(), &EditorCommand::DeleteChar);
+}
+
+#[test]
+fn test_find_match_three_key_sequence() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register "abc" sequence
+    let binding = KeyBinding::new(
+        KeySequence::new(vec![
+            KeyPattern::new(KeyCode::Char('a'), KeyModifiers::NONE),
+            KeyPattern::new(KeyCode::Char('b'), KeyModifiers::NONE),
+            KeyPattern::new(KeyCode::Char('c'), KeyModifiers::NONE),
+        ])
+        .expect("abc is valid"),
+        EditorCommand::Save,
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+    registry.register(binding).expect("registration");
+
+    // Add first key - no match
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('a'), KeyModifiers::NONE));
+    assert_eq!(registry.find_match(EditorMode::Normal), None);
+
+    // Add second key - no match
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('b'), KeyModifiers::NONE));
+    assert_eq!(registry.find_match(EditorMode::Normal), None);
+
+    // Add third key - match!
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('c'), KeyModifiers::NONE));
+    let result = registry.find_match(EditorMode::Normal);
+    assert!(result.is_some());
+    assert_eq!(result.unwrap(), &EditorCommand::Save);
+}
+
+#[test]
+fn test_find_match_context_filtering() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register 'i' only for Normal mode
+    let binding = create_binding(
+        'i',
+        KeyModifiers::NONE,
+        EditorCommand::ChangeMode(EditorMode::Insert),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+    registry.register(binding).expect("registration");
+
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('i'), KeyModifiers::NONE));
+
+    // Should match in Normal mode
+    assert!(registry.find_match(EditorMode::Normal).is_some());
+
+    // Should not match in Insert mode (context not active)
+    assert_eq!(registry.find_match(EditorMode::Insert), None);
+
+    // Should not match in Prompt mode (context not active)
+    assert_eq!(registry.find_match(EditorMode::Prompt), None);
+}
+
+#[test]
+fn test_find_match_global_context() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register Ctrl+S as global save
+    let binding = create_binding(
+        's',
+        KeyModifiers::CONTROL,
+        EditorCommand::Save,
+        BindingContext::Global,
+        Priority::Default,
+    );
+    registry.register(binding).expect("registration");
+
+    registry.add_to_sequence(KeyPattern::new(
+        KeyCode::Char('s'),
+        KeyModifiers::CONTROL,
+    ));
+
+    // Should match in Normal mode
+    assert!(registry.find_match(EditorMode::Normal).is_some());
+
+    // Should match in Insert mode
+    assert!(registry.find_match(EditorMode::Insert).is_some());
+
+    // Should NOT match in Prompt mode (Global excludes Prompt)
+    assert_eq!(registry.find_match(EditorMode::Prompt), None);
+}
+
+#[test]
+fn test_find_match_priority_ordering() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register same sequence at different priorities
+    let default = create_binding(
+        'i',
+        KeyModifiers::NONE,
+        EditorCommand::ChangeMode(EditorMode::Insert),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+
+    let user = create_binding(
+        'i',
+        KeyModifiers::NONE,
+        EditorCommand::Save, // Different command
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::User,
+    );
+
+    registry.register(default).expect("default");
+    registry.register(user).expect("user");
+
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('i'), KeyModifiers::NONE));
+
+    // Should return User priority binding (higher priority)
+    let result = registry.find_match(EditorMode::Normal);
+    assert!(result.is_some());
+    assert_eq!(result.unwrap(), &EditorCommand::Save);
+}
+
+#[test]
+fn test_find_match_empty_buffer() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    let binding = create_binding(
+        'i',
+        KeyModifiers::NONE,
+        EditorCommand::ChangeMode(EditorMode::Insert),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+    registry.register(binding).expect("registration");
+
+    // Empty buffer should not match
+    assert_eq!(registry.find_match(EditorMode::Normal), None);
+}
+
+#[test]
+fn test_is_partial_match_two_key_sequence() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register "dd" sequence
+    let binding = create_sequence_binding(
+        'd',
+        'd',
+        EditorCommand::DeleteChar,
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+    registry.register(binding).expect("registration");
+
+    // Empty buffer - no partial match
+    assert!(!registry.is_partial_match(EditorMode::Normal));
+
+    // Add first 'd' - this is a partial match
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    assert!(registry.is_partial_match(EditorMode::Normal));
+
+    // Add second 'd' - no longer partial (it's complete)
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    assert!(!registry.is_partial_match(EditorMode::Normal));
+}
+
+#[test]
+fn test_is_partial_match_three_key_sequence() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register "abc" sequence
+    let binding = KeyBinding::new(
+        KeySequence::new(vec![
+            KeyPattern::new(KeyCode::Char('a'), KeyModifiers::NONE),
+            KeyPattern::new(KeyCode::Char('b'), KeyModifiers::NONE),
+            KeyPattern::new(KeyCode::Char('c'), KeyModifiers::NONE),
+        ])
+        .expect("abc is valid"),
+        EditorCommand::Save,
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+    registry.register(binding).expect("registration");
+
+    // First key - partial match
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('a'), KeyModifiers::NONE));
+    assert!(registry.is_partial_match(EditorMode::Normal));
+
+    // Second key - still partial
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('b'), KeyModifiers::NONE));
+    assert!(registry.is_partial_match(EditorMode::Normal));
+
+    // Third key - complete (not partial)
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('c'), KeyModifiers::NONE));
+    assert!(!registry.is_partial_match(EditorMode::Normal));
+}
+
+#[test]
+fn test_is_partial_match_wrong_sequence() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register "dd" sequence
+    let binding = create_sequence_binding(
+        'd',
+        'd',
+        EditorCommand::DeleteChar,
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+    registry.register(binding).expect("registration");
+
+    // Add wrong first key - no partial match
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('x'), KeyModifiers::NONE));
+    assert!(!registry.is_partial_match(EditorMode::Normal));
+}
+
+#[test]
+fn test_is_partial_match_context_filtering() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register "dd" only for Normal mode
+    let binding = create_sequence_binding(
+        'd',
+        'd',
+        EditorCommand::DeleteChar,
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+    registry.register(binding).expect("registration");
+
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+
+    // Should be partial match in Normal mode
+    assert!(registry.is_partial_match(EditorMode::Normal));
+
+    // Should NOT be partial match in Insert mode (context not active)
+    assert!(!registry.is_partial_match(EditorMode::Insert));
+}
+
+#[test]
+fn test_check_timeout_empty_buffer() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_millis(100));
+
+    // Empty buffer should return false
+    assert!(!registry.check_timeout());
+}
+
+#[test]
+fn test_check_timeout_before_expiry() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(10));
+
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+
+    // Check immediately - should not timeout
+    assert!(!registry.check_timeout());
+}
+
+#[test]
+fn test_check_timeout_after_expiry() {
+    use std::thread;
+
+    let mut registry = KeyBindingRegistry::new(Duration::from_millis(50));
+
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+
+    // Wait for timeout
+    thread::sleep(Duration::from_millis(100));
+
+    // Should timeout and clear buffer
+    assert!(registry.check_timeout());
+
+    // Second check should return false (buffer already empty)
+    assert!(!registry.check_timeout());
+}
+
+#[test]
+fn test_check_timeout_resets_on_new_key() {
+    use std::thread;
+
+    let mut registry = KeyBindingRegistry::new(Duration::from_millis(100));
+
+    // Add first key
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+
+    // Wait half the timeout
+    thread::sleep(Duration::from_millis(50));
+
+    // Add second key - this resets the timeout
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+
+    // Check immediately after second key - should not timeout
+    assert!(!registry.check_timeout());
+
+    // Wait for original timeout period
+    thread::sleep(Duration::from_millis(60));
+
+    // Should still not timeout (timer was reset)
+    assert!(!registry.check_timeout());
+}
+
+#[test]
+fn test_sequence_cleared_after_match() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register "dd" sequence
+    let binding = create_sequence_binding(
+        'd',
+        'd',
+        EditorCommand::DeleteChar,
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+    registry.register(binding).expect("registration");
+
+    // Add first 'd' - partial match
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    assert!(registry.is_partial_match(EditorMode::Normal));
+
+    // Clear buffer
+    registry.clear_sequence();
+
+    // No longer a partial match (buffer is empty)
+    assert!(!registry.is_partial_match(EditorMode::Normal));
+}
+
+#[test]
+fn test_integration_complete_sequence_workflow() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register "dd" for delete line
+    let dd_binding = create_sequence_binding(
+        'd',
+        'd',
+        EditorCommand::DeleteChar,
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+
+    // Register "dw" for delete word
+    let dw_binding = KeyBinding::new(
+        KeySequence::new(vec![
+            KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE),
+            KeyPattern::new(KeyCode::Char('w'), KeyModifiers::NONE),
+        ])
+        .expect("dw is valid"),
+        EditorCommand::Save,
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+
+    registry.register(dd_binding).expect("dd");
+    registry.register(dw_binding).expect("dw");
+
+    // Step 1: Add 'd'
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    assert_eq!(registry.find_match(EditorMode::Normal), None); // No complete match
+    assert!(registry.is_partial_match(EditorMode::Normal)); // Partial match exists
+
+    // Step 2: Add 'd' (completing "dd")
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    let result = registry.find_match(EditorMode::Normal);
+    assert!(result.is_some());
+    assert_eq!(result.unwrap(), &EditorCommand::DeleteChar);
+    assert!(!registry.is_partial_match(EditorMode::Normal)); // Complete, not partial
+
+    // Step 3: Clear and try "dw"
+    registry.clear_sequence();
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    assert!(registry.is_partial_match(EditorMode::Normal));
+
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('w'), KeyModifiers::NONE));
+    let result = registry.find_match(EditorMode::Normal);
+    assert!(result.is_some());
+    assert_eq!(result.unwrap(), &EditorCommand::Save);
 }

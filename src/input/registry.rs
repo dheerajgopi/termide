@@ -111,7 +111,9 @@
 //! // User binding shadows the default binding
 //! ```
 
+use crate::editor::EditorMode;
 use crate::input::keybinding::{BindingContext, KeyBinding, KeyPattern, KeySequence, Priority};
+use crate::input::EditorCommand;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 
@@ -334,6 +336,201 @@ impl KeyBindingRegistry {
     /// ```
     pub fn is_empty(&self) -> bool {
         self.bindings.is_empty()
+    }
+
+    /// Adds a key pattern to the sequence buffer
+    ///
+    /// This method is called for each key press to accumulate patterns for multi-key
+    /// sequence matching. It updates the timestamp to track timeout.
+    ///
+    /// # Arguments
+    ///
+    /// * `pattern` - The key pattern to append to the buffer
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::input::registry::KeyBindingRegistry;
+    /// use termide::input::keybinding::KeyPattern;
+    /// use crossterm::event::{KeyCode, KeyModifiers};
+    /// use std::time::Duration;
+    ///
+    /// let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+    ///
+    /// // User presses 'd'
+    /// let pattern = KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE);
+    /// registry.add_to_sequence(pattern);
+    ///
+    /// // User presses 'd' again (completing "dd" sequence)
+    /// registry.add_to_sequence(pattern);
+    /// ```
+    #[inline]
+    pub fn add_to_sequence(&mut self, pattern: KeyPattern) {
+        self.sequence_buffer.push(pattern);
+        self.last_key_time = Instant::now();
+    }
+
+    /// Finds a matching binding for the current sequence buffer
+    ///
+    /// Searches for bindings that match the current buffer in the given mode.
+    /// Only considers bindings where the context is active in the current mode.
+    /// Returns the command from the highest-priority exact match.
+    ///
+    /// # Arguments
+    ///
+    /// * `current_mode` - The current editor mode for context filtering
+    ///
+    /// # Returns
+    ///
+    /// - `Some(&EditorCommand)` if an exact match is found
+    /// - `None` if no binding matches the current buffer
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::input::registry::KeyBindingRegistry;
+    /// use termide::input::keybinding::{KeyPattern, KeySequence, KeyBinding, BindingContext, Priority};
+    /// use termide::input::EditorCommand;
+    /// use termide::editor::EditorMode;
+    /// use crossterm::event::{KeyCode, KeyModifiers};
+    /// use std::time::Duration;
+    ///
+    /// let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+    ///
+    /// // Register "dd" for delete line
+    /// let dd_binding = KeyBinding::new(
+    ///     KeySequence::new(vec![
+    ///         KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE),
+    ///         KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE),
+    ///     ]).expect("dd is valid"),
+    ///     EditorCommand::DeleteChar,
+    ///     BindingContext::Mode(EditorMode::Normal),
+    ///     Priority::Default,
+    /// );
+    /// registry.register(dd_binding).unwrap();
+    ///
+    /// // Add first 'd' - no match yet
+    /// registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    /// assert_eq!(registry.find_match(EditorMode::Normal), None);
+    ///
+    /// // Add second 'd' - now we have a match
+    /// registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    /// assert!(registry.find_match(EditorMode::Normal).is_some());
+    /// ```
+    #[inline]
+    pub fn find_match(&self, current_mode: EditorMode) -> Option<&EditorCommand> {
+        // Filter bindings by active context, then find first exact match
+        // Since bindings are priority-sorted, first match is highest priority
+        self.bindings
+            .iter()
+            .filter(|binding| binding.context().is_active(current_mode))
+            .find(|binding| binding.sequence().matches(&self.sequence_buffer))
+            .map(|binding| binding.command())
+    }
+
+    /// Checks if the current buffer partially matches any binding
+    ///
+    /// Returns `true` if any binding in the current mode has a sequence that starts
+    /// with the current buffer but is longer (incomplete sequence). This indicates
+    /// the user is in the middle of typing a multi-key sequence.
+    ///
+    /// # Arguments
+    ///
+    /// * `current_mode` - The current editor mode for context filtering
+    ///
+    /// # Returns
+    ///
+    /// - `true` if any active binding partially matches the buffer
+    /// - `false` if no partial matches exist
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::input::registry::KeyBindingRegistry;
+    /// use termide::input::keybinding::{KeyPattern, KeySequence, KeyBinding, BindingContext, Priority};
+    /// use termide::input::EditorCommand;
+    /// use termide::editor::EditorMode;
+    /// use crossterm::event::{KeyCode, KeyModifiers};
+    /// use std::time::Duration;
+    ///
+    /// let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+    ///
+    /// // Register "dd" for delete line
+    /// let dd_binding = KeyBinding::new(
+    ///     KeySequence::new(vec![
+    ///         KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE),
+    ///         KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE),
+    ///     ]).expect("dd is valid"),
+    ///     EditorCommand::DeleteChar,
+    ///     BindingContext::Mode(EditorMode::Normal),
+    ///     Priority::Default,
+    /// );
+    /// registry.register(dd_binding).unwrap();
+    ///
+    /// // Add first 'd' - this is a partial match
+    /// registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    /// assert!(registry.is_partial_match(EditorMode::Normal));
+    ///
+    /// // Add second 'd' - no longer partial (it's complete)
+    /// registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    /// assert!(!registry.is_partial_match(EditorMode::Normal));
+    /// ```
+    #[inline]
+    pub fn is_partial_match(&self, current_mode: EditorMode) -> bool {
+        self.bindings
+            .iter()
+            .filter(|binding| binding.context().is_active(current_mode))
+            .any(|binding| binding.sequence().is_partial_match(&self.sequence_buffer))
+    }
+
+    /// Checks if the sequence buffer has timed out and clears it if so
+    ///
+    /// This method should be called periodically to prevent incomplete sequences
+    /// from keeping the editor in a waiting state indefinitely.
+    ///
+    /// # Returns
+    ///
+    /// - `true` if the buffer was cleared due to timeout
+    /// - `false` if the buffer is still valid or already empty
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::input::registry::KeyBindingRegistry;
+    /// use termide::input::keybinding::KeyPattern;
+    /// use crossterm::event::{KeyCode, KeyModifiers};
+    /// use std::time::Duration;
+    /// use std::thread;
+    ///
+    /// let mut registry = KeyBindingRegistry::new(Duration::from_millis(100));
+    ///
+    /// // Add a key
+    /// registry.add_to_sequence(KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    ///
+    /// // Check immediately - no timeout
+    /// assert!(!registry.check_timeout());
+    ///
+    /// // Wait for timeout
+    /// thread::sleep(Duration::from_millis(150));
+    ///
+    /// // Check again - buffer should be cleared
+    /// assert!(registry.check_timeout());
+    ///
+    /// // Second check - buffer already empty
+    /// assert!(!registry.check_timeout());
+    /// ```
+    pub fn check_timeout(&mut self) -> bool {
+        if self.sequence_buffer.is_empty() {
+            return false;
+        }
+
+        let elapsed = Instant::now() - self.last_key_time;
+        if elapsed >= self.timeout {
+            self.sequence_buffer.clear();
+            true
+        } else {
+            false
+        }
     }
 
     /// Clears the sequence buffer
