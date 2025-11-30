@@ -46,6 +46,7 @@ mod command;
 mod direction;
 mod handler;
 pub mod keybinding;
+pub mod registry;
 
 pub use command::EditorCommand;
 pub use direction::Direction;

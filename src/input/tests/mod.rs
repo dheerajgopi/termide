@@ -4,3 +4,4 @@
 
 mod handler;
 mod keybinding;
+mod registry;
