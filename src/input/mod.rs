@@ -42,6 +42,7 @@
 //! assert_eq!(command, Some(EditorCommand::Save));
 //! ```
 
+pub mod bindings;
 mod command;
 mod direction;
 mod handler;
