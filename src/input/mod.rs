@@ -45,6 +45,7 @@
 mod command;
 mod direction;
 mod handler;
+pub mod input_handler;
 pub mod keybinding;
 pub mod registry;
 
