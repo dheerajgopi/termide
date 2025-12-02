@@ -2,6 +2,8 @@
 
 use crate::editor::EditorMode;
 use super::Direction;
+use std::str::FromStr;
+use thiserror::Error;
 
 /// Represents all possible commands that can be issued in the editor
 ///
@@ -63,4 +65,123 @@ pub enum EditorCommand {
 
     /// Cancel the prompt (Esc key)
     CancelPrompt,
+}
+
+/// Error type for parsing editor commands from strings
+///
+/// This error type provides detailed information about what went wrong during
+/// parsing, helping users understand and fix invalid command strings.
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum CommandParseError {
+    /// The command string was empty
+    #[error("empty command string")]
+    EmptyCommand,
+
+    /// An unknown command name was encountered
+    #[error("unknown command '{0}': check available commands in documentation")]
+    UnknownCommand(String),
+
+    /// Invalid parameter for a command
+    #[error("invalid parameter '{param}' for command '{command}': {reason}")]
+    InvalidParameter {
+        command: String,
+        param: String,
+        reason: String,
+    },
+}
+
+impl FromStr for EditorCommand {
+    type Err = CommandParseError;
+
+    /// Parses a human-readable command string into an `EditorCommand`
+    ///
+    /// # Format
+    ///
+    /// Commands use a consistent naming convention with dot notation for namespacing:
+    /// - File operations: `file.save`, `quit`
+    /// - Navigation: `move.up`, `move.down`, `move.left`, `move.right`
+    /// - Mode switching: `mode.insert`, `mode.normal`, `mode.prompt`
+    /// - Editing: `delete_char`
+    /// - Prompt operations: `prompt.insert_char`, `prompt.delete_char`, `prompt.accept`, `prompt.cancel`
+    ///
+    /// Command names are case-insensitive for better user experience.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::input::{EditorCommand, Direction};
+    /// use termide::editor::EditorMode;
+    /// use std::str::FromStr;
+    ///
+    /// // File operations
+    /// let cmd = EditorCommand::from_str("file.save").unwrap();
+    /// assert_eq!(cmd, EditorCommand::Save);
+    ///
+    /// let cmd = EditorCommand::from_str("quit").unwrap();
+    /// assert_eq!(cmd, EditorCommand::Quit);
+    ///
+    /// // Navigation
+    /// let cmd = EditorCommand::from_str("move.up").unwrap();
+    /// assert_eq!(cmd, EditorCommand::MoveCursor(Direction::Up));
+    ///
+    /// // Mode switching
+    /// let cmd = EditorCommand::from_str("mode.insert").unwrap();
+    /// assert_eq!(cmd, EditorCommand::ChangeMode(EditorMode::Insert));
+    ///
+    /// // Editing
+    /// let cmd = EditorCommand::from_str("delete_char").unwrap();
+    /// assert_eq!(cmd, EditorCommand::DeleteChar);
+    ///
+    /// // Error cases
+    /// assert!(EditorCommand::from_str("").is_err());
+    /// assert!(EditorCommand::from_str("unknown_command").is_err());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns `CommandParseError` if:
+    /// - The input string is empty
+    /// - An unknown command name is provided
+    /// - Invalid parameters are provided for parameterized commands
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let trimmed = s.trim().to_lowercase();
+
+        if trimmed.is_empty() {
+            return Err(CommandParseError::EmptyCommand);
+        }
+
+        match trimmed.as_str() {
+            // File operations
+            "file.save" | "save" => Ok(EditorCommand::Save),
+            "quit" | "exit" => Ok(EditorCommand::Quit),
+
+            // Editing operations
+            "delete_char" | "delete" | "backspace" => Ok(EditorCommand::DeleteChar),
+
+            // Navigation commands
+            "move.up" | "move_up" | "up" => Ok(EditorCommand::MoveCursor(Direction::Up)),
+            "move.down" | "move_down" | "down" => Ok(EditorCommand::MoveCursor(Direction::Down)),
+            "move.left" | "move_left" | "left" => Ok(EditorCommand::MoveCursor(Direction::Left)),
+            "move.right" | "move_right" | "right" => Ok(EditorCommand::MoveCursor(Direction::Right)),
+
+            // Mode switching commands
+            "mode.insert" | "insert_mode" | "insert" => {
+                Ok(EditorCommand::ChangeMode(EditorMode::Insert))
+            }
+            "mode.normal" | "normal_mode" | "normal" => {
+                Ok(EditorCommand::ChangeMode(EditorMode::Normal))
+            }
+            "mode.prompt" | "prompt_mode" => {
+                Ok(EditorCommand::ChangeMode(EditorMode::Prompt))
+            }
+
+            // Prompt operations
+            "prompt.accept" | "accept_prompt" | "accept" => Ok(EditorCommand::AcceptPrompt),
+            "prompt.cancel" | "cancel_prompt" | "cancel" => Ok(EditorCommand::CancelPrompt),
+            "prompt.delete_char" | "prompt_delete" => Ok(EditorCommand::PromptDeleteChar),
+
+            // Unknown command
+            _ => Err(CommandParseError::UnknownCommand(trimmed)),
+        }
+    }
 }

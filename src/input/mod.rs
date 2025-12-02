@@ -50,9 +50,10 @@ pub mod input_handler;
 pub mod keybinding;
 pub mod registry;
 
-pub use command::EditorCommand;
+pub use command::{EditorCommand, CommandParseError};
 pub use direction::Direction;
 pub use handler::handle_key_event;
+pub use keybinding::ParseError;
 
 #[cfg(test)]
 mod tests;

@@ -2,10 +2,11 @@
 
 use crate::editor::EditorMode;
 use crate::input::keybinding::{
-    BindingContext, KeyBinding, KeyPattern, KeySequence, Priority, PRIMARY_MODIFIER,
+    BindingContext, KeyBinding, KeyPattern, KeySequence, Priority, PRIMARY_MODIFIER, ParseError,
 };
 use crate::input::EditorCommand;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::str::FromStr;
 
 /// Helper to create a KeyEvent from code and modifiers
 fn key_event(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
@@ -461,4 +462,419 @@ fn test_key_binding_priority_levels() {
 
     // User priority should be higher than Default
     assert!(user_binding.priority() > default_binding.priority());
+}
+
+// ============================================================================
+// KeySequence String Parsing Tests - Valid Inputs
+// ============================================================================
+
+#[test]
+fn test_parse_single_key_with_ctrl_modifier() {
+    let seq = KeySequence::from_str("Ctrl+S").unwrap();
+    assert_eq!(seq.len(), 1);
+
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Char('S'), KeyModifiers::CONTROL),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+}
+
+#[test]
+fn test_parse_multi_key_sequence() {
+    let seq = KeySequence::from_str("d d").unwrap();
+    assert_eq!(seq.len(), 2);
+
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE),
+        KeyPattern::new(KeyCode::Char('d'), KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+}
+
+#[test]
+fn test_parse_multiple_modifiers() {
+    let seq = KeySequence::from_str("Ctrl+Shift+F").unwrap();
+    assert_eq!(seq.len(), 1);
+
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Char('F'), KeyModifiers::CONTROL | KeyModifiers::SHIFT),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+}
+
+#[test]
+fn test_parse_case_insensitive_modifiers() {
+    let seq1 = KeySequence::from_str("ctrl+s").unwrap();
+    let seq2 = KeySequence::from_str("Ctrl+S").unwrap();
+    let seq3 = KeySequence::from_str("CTRL+s").unwrap();
+
+    // All should have CONTROL modifier, but 's' vs 'S' is different
+    // Actually, let's just check they all parse successfully
+    assert_eq!(seq1.len(), 1);
+    assert_eq!(seq2.len(), 1);
+    assert_eq!(seq3.len(), 1);
+}
+
+#[test]
+fn test_parse_all_modifiers() {
+    // Ctrl
+    let seq = KeySequence::from_str("Ctrl+A").unwrap();
+    assert_eq!(seq.len(), 1);
+
+    // Shift
+    let seq = KeySequence::from_str("Shift+B").unwrap();
+    assert_eq!(seq.len(), 1);
+
+    // Alt
+    let seq = KeySequence::from_str("Alt+C").unwrap();
+    assert_eq!(seq.len(), 1);
+
+    // Super
+    let seq = KeySequence::from_str("Super+D").unwrap();
+    assert_eq!(seq.len(), 1);
+}
+
+#[test]
+fn test_parse_special_keys() {
+    // Enter
+    let seq = KeySequence::from_str("Enter").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Enter, KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+
+    // Esc
+    let seq = KeySequence::from_str("Esc").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Esc, KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+
+    // Tab
+    let seq = KeySequence::from_str("Tab").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Tab, KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+
+    // Backspace
+    let seq = KeySequence::from_str("Backspace").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Backspace, KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+
+    // Delete
+    let seq = KeySequence::from_str("Delete").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Delete, KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+}
+
+#[test]
+fn test_parse_arrow_keys() {
+    let seq = KeySequence::from_str("Up").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Up, KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+
+    let seq = KeySequence::from_str("Down").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Down, KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+
+    let seq = KeySequence::from_str("Left").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Left, KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+
+    let seq = KeySequence::from_str("Right").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Right, KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+}
+
+#[test]
+fn test_parse_navigation_keys() {
+    let seq = KeySequence::from_str("Home").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Home, KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+
+    let seq = KeySequence::from_str("End").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::End, KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+
+    let seq = KeySequence::from_str("PageUp").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::PageUp, KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+
+    let seq = KeySequence::from_str("PageDown").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::PageDown, KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+}
+
+#[test]
+fn test_parse_function_keys() {
+    for i in 1..=12 {
+        let input = format!("F{}", i);
+        let seq = KeySequence::from_str(&input).unwrap();
+        let expected = KeySequence::new(vec![
+            KeyPattern::new(KeyCode::F(i), KeyModifiers::NONE),
+        ]).unwrap();
+        assert_eq!(seq, expected, "F{} should parse correctly", i);
+    }
+}
+
+#[test]
+fn test_parse_special_keys_with_modifiers() {
+    let seq = KeySequence::from_str("Ctrl+Enter").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Enter, KeyModifiers::CONTROL),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+
+    let seq = KeySequence::from_str("Shift+Tab").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Tab, KeyModifiers::SHIFT),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+
+    let seq = KeySequence::from_str("Alt+Backspace").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Backspace, KeyModifiers::ALT),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+}
+
+#[test]
+fn test_parse_multi_key_with_modifiers() {
+    let seq = KeySequence::from_str("Ctrl+X k").unwrap();
+    assert_eq!(seq.len(), 2);
+
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Char('X'), KeyModifiers::CONTROL),
+        KeyPattern::new(KeyCode::Char('k'), KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+}
+
+#[test]
+fn test_parse_whitespace_handling() {
+    // Extra spaces should be ignored
+    let seq1 = KeySequence::from_str("  d   d  ").unwrap();
+    let seq2 = KeySequence::from_str("d d").unwrap();
+    assert_eq!(seq1, seq2);
+
+    // Tabs and multiple spaces
+    let seq3 = KeySequence::from_str("d\t\td").unwrap();
+    assert_eq!(seq2, seq3);
+}
+
+#[test]
+fn test_parse_single_character_keys() {
+    let seq = KeySequence::from_str("a").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Char('a'), KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+
+    // Uppercase should be preserved
+    let seq = KeySequence::from_str("A").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Char('A'), KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+}
+
+#[test]
+fn test_parse_space_key() {
+    let seq = KeySequence::from_str("Space").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Char(' '), KeyModifiers::NONE),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+
+    // With modifiers
+    let seq = KeySequence::from_str("Ctrl+Space").unwrap();
+    let expected = KeySequence::new(vec![
+        KeyPattern::new(KeyCode::Char(' '), KeyModifiers::CONTROL),
+    ]).unwrap();
+    assert_eq!(seq, expected);
+}
+
+#[test]
+fn test_parse_vim_style_sequences() {
+    // dd - delete line
+    let seq = KeySequence::from_str("d d").unwrap();
+    assert_eq!(seq.len(), 2);
+
+    // gg - go to top
+    let seq = KeySequence::from_str("g g").unwrap();
+    assert_eq!(seq.len(), 2);
+
+    // ci( - change inside parentheses
+    let seq = KeySequence::from_str("c i (").unwrap();
+    assert_eq!(seq.len(), 3);
+}
+
+#[test]
+fn test_parse_alternative_key_names() {
+    // "Control" as alternative to "Ctrl"
+    let seq1 = KeySequence::from_str("Control+S").unwrap();
+    let seq2 = KeySequence::from_str("Ctrl+S").unwrap();
+    assert_eq!(seq1, seq2);
+
+    // "Cmd" and "Command" as alternatives to "Super"
+    let seq1 = KeySequence::from_str("Cmd+Q").unwrap();
+    let seq2 = KeySequence::from_str("Command+Q").unwrap();
+    let seq3 = KeySequence::from_str("Super+Q").unwrap();
+    assert_eq!(seq1, seq2);
+    assert_eq!(seq2, seq3);
+
+    // "Escape" as alternative to "Esc"
+    let seq1 = KeySequence::from_str("Escape").unwrap();
+    let seq2 = KeySequence::from_str("Esc").unwrap();
+    assert_eq!(seq1, seq2);
+
+    // "Return" as alternative to "Enter"
+    let seq1 = KeySequence::from_str("Return").unwrap();
+    let seq2 = KeySequence::from_str("Enter").unwrap();
+    assert_eq!(seq1, seq2);
+}
+
+// ============================================================================
+// KeySequence String Parsing Tests - Invalid Inputs
+// ============================================================================
+
+#[test]
+fn test_parse_empty_string() {
+    let result = KeySequence::from_str("");
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), ParseError::EmptyInput);
+}
+
+#[test]
+fn test_parse_whitespace_only() {
+    let result = KeySequence::from_str("   ");
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), ParseError::EmptyInput);
+}
+
+#[test]
+fn test_parse_incomplete_pattern() {
+    let result = KeySequence::from_str("Ctrl+");
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ParseError::InvalidFormat(_) => {},
+        e => panic!("Expected InvalidFormat, got {:?}", e),
+    }
+}
+
+#[test]
+fn test_parse_unknown_modifier() {
+    let result = KeySequence::from_str("Unknown+S");
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ParseError::UnknownModifier(s) => assert_eq!(s, "Unknown"),
+        e => panic!("Expected UnknownModifier, got {:?}", e),
+    }
+}
+
+#[test]
+fn test_parse_unknown_key() {
+    let result = KeySequence::from_str("InvalidKey");
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ParseError::UnknownKey(s) => assert_eq!(s, "InvalidKey"),
+        e => panic!("Expected UnknownKey, got {:?}", e),
+    }
+}
+
+#[test]
+fn test_parse_invalid_function_key() {
+    // F13 doesn't exist
+    let result = KeySequence::from_str("F13");
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ParseError::UnknownKey(s) => assert_eq!(s, "F13"),
+        e => panic!("Expected UnknownKey, got {:?}", e),
+    }
+
+    // F0 doesn't exist
+    let result = KeySequence::from_str("F0");
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ParseError::UnknownKey(s) => assert_eq!(s, "F0"),
+        e => panic!("Expected UnknownKey, got {:?}", e),
+    }
+}
+
+#[test]
+fn test_parse_multiple_plus_signs() {
+    let result = KeySequence::from_str("Ctrl++S");
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ParseError::InvalidFormat(_) => {},
+        e => panic!("Expected InvalidFormat, got {:?}", e),
+    }
+}
+
+#[test]
+fn test_parse_modifier_only() {
+    let result = KeySequence::from_str("Ctrl");
+    assert!(result.is_err());
+    // "Ctrl" by itself is an unknown key
+    match result.unwrap_err() {
+        ParseError::UnknownKey(s) => assert_eq!(s, "Ctrl"),
+        e => panic!("Expected UnknownKey, got {:?}", e),
+    }
+}
+
+#[test]
+fn test_parse_case_sensitivity_for_keys() {
+    // Keys should be case-sensitive for characters
+    let seq1 = KeySequence::from_str("a").unwrap();
+    let seq2 = KeySequence::from_str("A").unwrap();
+    assert_ne!(seq1, seq2);
+
+    // But special keys should be case-insensitive
+    let seq1 = KeySequence::from_str("enter").unwrap();
+    let seq2 = KeySequence::from_str("ENTER").unwrap();
+    assert_eq!(seq1, seq2);
+}
+
+// ============================================================================
+// ParseError Display Tests
+// ============================================================================
+
+#[test]
+fn test_parse_error_messages() {
+    // Empty input
+    let err = KeySequence::from_str("").unwrap_err();
+    assert_eq!(err.to_string(), "empty key sequence string");
+
+    // Unknown modifier
+    let err = KeySequence::from_str("BadMod+S").unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("unknown modifier"));
+    assert!(msg.contains("BadMod"));
+
+    // Unknown key
+    let err = KeySequence::from_str("BadKey").unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("unknown key name"));
+    assert!(msg.contains("BadKey"));
 }

@@ -95,6 +95,8 @@
 use crate::editor::EditorMode;
 use crate::input::EditorCommand;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::str::FromStr;
+use thiserror::Error;
 
 /// Platform-specific primary modifier key
 ///
@@ -446,6 +448,207 @@ impl KeySequence {
             .zip(buffer.iter())
             .all(|(pattern, buf_pattern)| pattern == buf_pattern)
     }
+}
+
+/// Error type for parsing key sequences and patterns from strings
+///
+/// This error type provides detailed information about what went wrong during
+/// parsing, including the invalid portion of the input for user debugging.
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum ParseError {
+    /// The input string was empty
+    #[error("empty key sequence string")]
+    EmptyInput,
+
+    /// A key pattern string was empty (e.g., "Ctrl+" with nothing after)
+    #[error("empty key pattern: expected key name after modifiers")]
+    EmptyPattern,
+
+    /// An unknown modifier name was encountered
+    #[error("unknown modifier '{0}': valid modifiers are Ctrl, Shift, Alt, Super")]
+    UnknownModifier(String),
+
+    /// An unknown key name was encountered
+    #[error("unknown key name '{0}': check spelling or use special key names like Enter, Esc, Tab, etc.")]
+    UnknownKey(String),
+
+    /// Invalid format (e.g., multiple '+' in a row)
+    #[error("invalid key pattern format '{0}': expected format like 'Ctrl+S' or 'd d'")]
+    InvalidFormat(String),
+}
+
+impl FromStr for KeySequence {
+    type Err = ParseError;
+
+    /// Parses a human-readable key sequence string into a `KeySequence`
+    ///
+    /// # Format
+    ///
+    /// The parser supports two formats:
+    ///
+    /// 1. **Single-key sequences with modifiers**: `"Ctrl+S"`, `"Alt+F4"`, `"Shift+Tab"`
+    /// 2. **Multi-key sequences**: `"d d"`, `"g g"`, `"c i ("`
+    ///
+    /// ## Modifier Syntax
+    ///
+    /// - Modifiers and keys are separated by `+`
+    /// - Multiple modifiers can be combined: `"Ctrl+Shift+F"`
+    /// - Modifiers are case-insensitive: `"ctrl+s"` == `"Ctrl+S"` == `"CTRL+S"`
+    /// - Valid modifiers: `Ctrl`, `Shift`, `Alt`, `Super`
+    ///
+    /// ## Special Keys
+    ///
+    /// Special key names are case-insensitive:
+    /// - Navigation: `Up`, `Down`, `Left`, `Right`, `Home`, `End`, `PageUp`, `PageDown`
+    /// - Editing: `Enter`, `Backspace`, `Delete`, `Tab`, `Space`, `Esc`
+    /// - Function keys: `F1` through `F12`
+    ///
+    /// ## Multi-Key Sequences
+    ///
+    /// - Keys are separated by spaces: `"d d"`, `"g g"`
+    /// - Each key can have its own modifiers: `"Ctrl+X k"` (Ctrl+X followed by k)
+    /// - Extra whitespace is ignored
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::input::keybinding::KeySequence;
+    /// use std::str::FromStr;
+    ///
+    /// // Single-key with modifier
+    /// let seq = KeySequence::from_str("Ctrl+S").unwrap();
+    /// assert_eq!(seq.len(), 1);
+    ///
+    /// // Multi-key sequence
+    /// let seq = KeySequence::from_str("d d").unwrap();
+    /// assert_eq!(seq.len(), 2);
+    ///
+    /// // Multiple modifiers
+    /// let seq = KeySequence::from_str("Ctrl+Shift+F").unwrap();
+    /// assert_eq!(seq.len(), 1);
+    ///
+    /// // Case-insensitive modifiers
+    /// let seq1 = KeySequence::from_str("ctrl+s").unwrap();
+    /// let seq2 = KeySequence::from_str("Ctrl+S").unwrap();
+    /// assert_eq!(seq1, seq2);
+    ///
+    /// // Special keys
+    /// let seq = KeySequence::from_str("Enter").unwrap();
+    /// let seq = KeySequence::from_str("Ctrl+Backspace").unwrap();
+    ///
+    /// // Error cases
+    /// assert!(KeySequence::from_str("").is_err());
+    /// assert!(KeySequence::from_str("Ctrl+").is_err());
+    /// assert!(KeySequence::from_str("InvalidKey").is_err());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns `ParseError` if:
+    /// - The input string is empty
+    /// - A key pattern is incomplete (e.g., `"Ctrl+"`)
+    /// - An unknown modifier is used
+    /// - An unknown key name is used
+    /// - The format is invalid
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            return Err(ParseError::EmptyInput);
+        }
+
+        // Split by whitespace to get individual key patterns
+        let pattern_strings: Vec<&str> = trimmed.split_whitespace().collect();
+        let mut patterns = Vec::new();
+
+        for pattern_str in pattern_strings {
+            let pattern = parse_key_pattern(pattern_str)?;
+            patterns.push(pattern);
+        }
+
+        KeySequence::new(patterns).ok_or(ParseError::EmptyInput)
+    }
+}
+
+/// Parses a single key pattern string like "Ctrl+S" or "Enter"
+fn parse_key_pattern(s: &str) -> Result<KeyPattern, ParseError> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err(ParseError::EmptyPattern);
+    }
+
+    // Split by '+' to separate modifiers from the key
+    let parts: Vec<&str> = s.split('+').map(|p| p.trim()).collect();
+
+    if parts.is_empty() || parts.iter().any(|p| p.is_empty()) {
+        return Err(ParseError::InvalidFormat(s.to_string()));
+    }
+
+    // Last part is the key, everything before is modifiers
+    let key_str = parts[parts.len() - 1];
+    let modifier_strs = &parts[..parts.len() - 1];
+
+    // Parse modifiers
+    let mut modifiers = KeyModifiers::NONE;
+    for modifier_str in modifier_strs {
+        let modifier = parse_modifier(modifier_str)?;
+        modifiers |= modifier;
+    }
+
+    // Parse key
+    let key_code = parse_key_code(key_str)?;
+
+    Ok(KeyPattern::new(key_code, modifiers))
+}
+
+/// Parses a modifier string like "Ctrl", "Shift", "Alt"
+fn parse_modifier(s: &str) -> Result<KeyModifiers, ParseError> {
+    match s.to_lowercase().as_str() {
+        "ctrl" | "control" => Ok(KeyModifiers::CONTROL),
+        "shift" => Ok(KeyModifiers::SHIFT),
+        "alt" => Ok(KeyModifiers::ALT),
+        "super" | "cmd" | "command" => Ok(KeyModifiers::SUPER),
+        _ => Err(ParseError::UnknownModifier(s.to_string())),
+    }
+}
+
+/// Parses a key name string like "s", "Enter", "F1"
+fn parse_key_code(s: &str) -> Result<KeyCode, ParseError> {
+    // Special keys (case-insensitive)
+    match s.to_lowercase().as_str() {
+        "enter" | "return" => return Ok(KeyCode::Enter),
+        "esc" | "escape" => return Ok(KeyCode::Esc),
+        "tab" => return Ok(KeyCode::Tab),
+        "backspace" | "back" => return Ok(KeyCode::Backspace),
+        "delete" | "del" => return Ok(KeyCode::Delete),
+        "space" => return Ok(KeyCode::Char(' ')),
+        "up" => return Ok(KeyCode::Up),
+        "down" => return Ok(KeyCode::Down),
+        "left" => return Ok(KeyCode::Left),
+        "right" => return Ok(KeyCode::Right),
+        "home" => return Ok(KeyCode::Home),
+        "end" => return Ok(KeyCode::End),
+        "pageup" | "pgup" => return Ok(KeyCode::PageUp),
+        "pagedown" | "pgdown" => return Ok(KeyCode::PageDown),
+        _ => {}
+    }
+
+    // Function keys
+    if s.to_lowercase().starts_with('f') {
+        if let Ok(num) = s[1..].parse::<u8>() {
+            if (1..=12).contains(&num) {
+                return Ok(KeyCode::F(num));
+            }
+        }
+    }
+
+    // Single character keys
+    if s.len() == 1 {
+        let ch = s.chars().next().unwrap();
+        return Ok(KeyCode::Char(ch));
+    }
+
+    // Unknown key
+    Err(ParseError::UnknownKey(s.to_string()))
 }
 
 /// Context specifying when a keybinding is active
