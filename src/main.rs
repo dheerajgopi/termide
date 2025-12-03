@@ -16,7 +16,9 @@ use crossterm::{
 
 use termide::buffer::Position;
 use termide::editor::{EditorMode, EditorState};
-use termide::input::{handle_key_event, Direction, EditorCommand};
+use termide::input::{Direction, EditorCommand};
+use termide::input::bindings::register_default_bindings;
+use termide::input::input_handler::{InputHandler, MatchResult};
 use termide::ui::Renderer;
 
 mod buffer;
@@ -45,11 +47,16 @@ fn main() -> Result<()> {
     enable_raw_mode().context("Failed to enable raw terminal mode")?;
     let mut renderer = Renderer::new().context("Failed to initialize renderer")?;
 
+    // Initialize input handler with default bindings
+    let mut input_handler = InputHandler::with_timeout(Duration::from_millis(1000));
+    register_default_bindings(&mut input_handler.registry_mut())
+        .context("Failed to register default keybindings")?;
+
     // Initialize cursor position
     let mut cursor = Position::origin();
 
     // Main event loop
-    let result = run_event_loop(&mut state, &mut renderer, &mut cursor);
+    let result = run_event_loop(&mut state, &mut renderer, &mut cursor, &mut input_handler);
 
     // Clean up terminal
     disable_raw_mode().context("Failed to disable raw terminal mode")?;
@@ -92,6 +99,7 @@ fn run_event_loop(
     state: &mut EditorState,
     renderer: &mut Renderer,
     cursor: &mut Position,
+    input_handler: &mut InputHandler,
 ) -> Result<()> {
     loop {
         // Render current state
@@ -102,10 +110,13 @@ fn run_event_loop(
             break;
         }
 
+        // Check for sequence buffer timeout
+        input_handler.check_timeout();
+
         // Read input event with timeout
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key_event) = event::read()? {
-                process_key_event(state, cursor, key_event)?;
+                process_key_event(state, cursor, key_event, input_handler)?;
             }
         }
     }
@@ -118,13 +129,71 @@ fn process_key_event(
     state: &mut EditorState,
     cursor: &mut Position,
     key_event: KeyEvent,
+    input_handler: &mut InputHandler,
 ) -> Result<()> {
-    // Map key event to command based on current mode
-    let command = handle_key_event(key_event, state.mode());
+    // Process key event through new input handler
+    let result = input_handler.process_key_event(key_event, state.mode());
 
-    // Execute command if one was generated
-    if let Some(cmd) = command {
-        execute_command(state, cursor, cmd)?;
+    match result {
+        MatchResult::Matched(cmd) => {
+            // Complete match - execute the command
+            execute_command(state, cursor, cmd, input_handler)?;
+        }
+        MatchResult::Partial => {
+            // Partial match - wait for next key
+            // Do nothing, buffer is preserved automatically
+        }
+        MatchResult::NoMatch => {
+            // No match - fall back to default behavior based on mode
+            handle_no_match(state, cursor, key_event)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Handles keys that don't match any binding (fallback behavior)
+///
+/// This implements mode-specific default behavior for unmatched keys:
+/// - Insert mode: Insert printable characters
+/// - Prompt mode: Insert printable characters into prompt
+/// - Normal mode: Ignore
+fn handle_no_match(
+    state: &mut EditorState,
+    cursor: &mut Position,
+    key_event: KeyEvent,
+) -> Result<()> {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    match state.mode() {
+        EditorMode::Insert => {
+            // Insert printable characters (only if no special modifiers except SHIFT)
+            if let KeyCode::Char(c) = key_event.code {
+                if !key_event.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) {
+                    // Handle char insertion directly
+                    state.handle_char_insert(c, *cursor);
+                    // Move cursor after insertion
+                    if c == '\n' {
+                        cursor.line += 1;
+                        cursor.column = 0;
+                    } else {
+                        cursor.column += 1;
+                    }
+                    state.clear_status_message();
+                }
+            }
+        }
+        EditorMode::Prompt => {
+            // Insert printable characters into prompt (only if no special modifiers except SHIFT)
+            if let KeyCode::Char(c) = key_event.code {
+                if !key_event.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) {
+                    state.prompt_insert_char(c);
+                }
+            }
+        }
+        EditorMode::Normal => {
+            // In Normal mode, ignore unmatched keys
+        }
     }
 
     Ok(())
@@ -135,6 +204,7 @@ fn execute_command(
     state: &mut EditorState,
     cursor: &mut Position,
     command: EditorCommand,
+    input_handler: &mut InputHandler,
 ) -> Result<()> {
     match command {
         EditorCommand::InsertChar(ch) => {
@@ -197,6 +267,8 @@ fn execute_command(
         }
         EditorCommand::ChangeMode(mode) => {
             state.set_mode(mode);
+            // Clear sequence buffer on mode change
+            input_handler.on_mode_change();
             // Clear status message when changing modes
             state.clear_status_message();
         }
@@ -208,6 +280,8 @@ fn execute_command(
         }
         EditorCommand::AcceptPrompt => {
             let filename = state.accept_prompt();
+            // Clear sequence buffer on mode change (Prompt -> previous mode)
+            input_handler.on_mode_change();
             if !filename.is_empty() {
                 // Save the file with the given filename
                 match state.save_as(Path::new(&filename)) {
@@ -224,6 +298,8 @@ fn execute_command(
         }
         EditorCommand::CancelPrompt => {
             state.cancel_prompt();
+            // Clear sequence buffer on mode change (Prompt -> previous mode)
+            input_handler.on_mode_change();
             state.set_status_message("Info: Save cancelled".to_string());
         }
     }

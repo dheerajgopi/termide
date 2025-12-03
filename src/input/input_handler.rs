@@ -298,6 +298,24 @@ impl InputHandler {
         self.registry.register(binding)
     }
 
+    /// Returns a mutable reference to the underlying registry
+    ///
+    /// This allows direct access to the registry for bulk operations like
+    /// registering default bindings during initialization.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::input::input_handler::InputHandler;
+    /// use termide::input::bindings::register_default_bindings;
+    ///
+    /// let mut handler = InputHandler::new();
+    /// register_default_bindings(handler.registry_mut()).expect("defaults should register");
+    /// ```
+    pub fn registry_mut(&mut self) -> &mut KeyBindingRegistry {
+        &mut self.registry
+    }
+
     /// Processes a key event and returns the match result
     ///
     /// This method converts the Crossterm `KeyEvent` to a `KeyPattern`, adds it to

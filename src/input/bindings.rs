@@ -97,7 +97,7 @@ pub fn register_default_bindings(registry: &mut KeyBindingRegistry) -> Result<()
 /// use termide::input::bindings::global_bindings;
 ///
 /// let bindings = global_bindings();
-/// assert_eq!(bindings.len(), 2);
+/// assert_eq!(bindings.len(), 4);
 /// ```
 pub fn global_bindings() -> Vec<KeyBinding> {
     vec![

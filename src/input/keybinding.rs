@@ -527,9 +527,9 @@ impl FromStr for KeySequence {
     /// let seq = KeySequence::from_str("Ctrl+Shift+F").unwrap();
     /// assert_eq!(seq.len(), 1);
     ///
-    /// // Case-insensitive modifiers
+    /// // Case-insensitive modifiers (but character case matters)
     /// let seq1 = KeySequence::from_str("ctrl+s").unwrap();
-    /// let seq2 = KeySequence::from_str("Ctrl+S").unwrap();
+    /// let seq2 = KeySequence::from_str("Ctrl+s").unwrap();
     /// assert_eq!(seq1, seq2);
     ///
     /// // Special keys
