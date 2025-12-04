@@ -398,3 +398,84 @@ fn test_short_form_commands() {
         EditorCommand::ChangeMode(EditorMode::Normal)
     );
 }
+
+#[test]
+fn test_parse_delete_forward_command() {
+    let cmd = EditorCommand::from_str("delete_forward").unwrap();
+    assert_eq!(cmd, EditorCommand::DeleteForward);
+
+    // Alternative forms
+    let cmd = EditorCommand::from_str("delete.forward").unwrap();
+    assert_eq!(cmd, EditorCommand::DeleteForward);
+
+    let cmd = EditorCommand::from_str("del").unwrap();
+    assert_eq!(cmd, EditorCommand::DeleteForward);
+}
+
+#[test]
+fn test_parse_move_to_line_start_command() {
+    let cmd = EditorCommand::from_str("move.line_start").unwrap();
+    assert_eq!(cmd, EditorCommand::MoveToLineStart);
+
+    // Alternative forms
+    let cmd = EditorCommand::from_str("move_line_start").unwrap();
+    assert_eq!(cmd, EditorCommand::MoveToLineStart);
+
+    let cmd = EditorCommand::from_str("line_start").unwrap();
+    assert_eq!(cmd, EditorCommand::MoveToLineStart);
+
+    let cmd = EditorCommand::from_str("home").unwrap();
+    assert_eq!(cmd, EditorCommand::MoveToLineStart);
+}
+
+#[test]
+fn test_parse_move_to_line_end_command() {
+    let cmd = EditorCommand::from_str("move.line_end").unwrap();
+    assert_eq!(cmd, EditorCommand::MoveToLineEnd);
+
+    // Alternative forms
+    let cmd = EditorCommand::from_str("move_line_end").unwrap();
+    assert_eq!(cmd, EditorCommand::MoveToLineEnd);
+
+    let cmd = EditorCommand::from_str("line_end").unwrap();
+    assert_eq!(cmd, EditorCommand::MoveToLineEnd);
+
+    let cmd = EditorCommand::from_str("end").unwrap();
+    assert_eq!(cmd, EditorCommand::MoveToLineEnd);
+}
+
+#[test]
+fn test_parse_page_up_command() {
+    let cmd = EditorCommand::from_str("page.up").unwrap();
+    assert_eq!(cmd, EditorCommand::PageUp);
+
+    // Alternative forms
+    let cmd = EditorCommand::from_str("page_up").unwrap();
+    assert_eq!(cmd, EditorCommand::PageUp);
+
+    let cmd = EditorCommand::from_str("pageup").unwrap();
+    assert_eq!(cmd, EditorCommand::PageUp);
+}
+
+#[test]
+fn test_parse_page_down_command() {
+    let cmd = EditorCommand::from_str("page.down").unwrap();
+    assert_eq!(cmd, EditorCommand::PageDown);
+
+    // Alternative forms
+    let cmd = EditorCommand::from_str("page_down").unwrap();
+    assert_eq!(cmd, EditorCommand::PageDown);
+
+    let cmd = EditorCommand::from_str("pagedown").unwrap();
+    assert_eq!(cmd, EditorCommand::PageDown);
+}
+
+#[test]
+fn test_parse_insert_tab_command() {
+    let cmd = EditorCommand::from_str("insert_tab").unwrap();
+    assert_eq!(cmd, EditorCommand::InsertTab);
+
+    // Alternative form
+    let cmd = EditorCommand::from_str("tab").unwrap();
+    assert_eq!(cmd, EditorCommand::InsertTab);
+}

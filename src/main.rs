@@ -248,8 +248,40 @@ fn execute_command(
             // Clear status message on editing
             state.clear_status_message();
         }
+        EditorCommand::DeleteForward => {
+            // Delete character at cursor position (not before)
+            state.buffer_mut().delete_forward(*cursor);
+            // Cursor stays in same position after forward delete
+            // (character after cursor is removed, cursor doesn't move)
+            state.clear_status_message();
+        }
         EditorCommand::MoveCursor(direction) => {
             move_cursor(cursor, direction, state);
+        }
+        EditorCommand::MoveToLineStart => {
+            *cursor = state.buffer().get_line_start(*cursor);
+        }
+        EditorCommand::MoveToLineEnd => {
+            *cursor = state.buffer().get_line_end(*cursor);
+        }
+        EditorCommand::PageUp => {
+            // Use a reasonable default viewport height (e.g., 20 lines)
+            // In the future, this should come from the renderer/terminal height
+            const DEFAULT_VIEWPORT_HEIGHT: usize = 20;
+            *cursor = state.buffer().page_up(*cursor, DEFAULT_VIEWPORT_HEIGHT);
+        }
+        EditorCommand::PageDown => {
+            // Use a reasonable default viewport height (e.g., 20 lines)
+            // In the future, this should come from the renderer/terminal height
+            const DEFAULT_VIEWPORT_HEIGHT: usize = 20;
+            *cursor = state.buffer().page_down(*cursor, DEFAULT_VIEWPORT_HEIGHT);
+        }
+        EditorCommand::InsertTab => {
+            // Insert a tab character
+            // In the future, this should respect editor config (tabs vs spaces, tab width)
+            state.handle_char_insert('\t', *cursor);
+            cursor.column += 1;
+            state.clear_status_message();
         }
         EditorCommand::Save => {
             match state.save() {

@@ -262,3 +262,155 @@ fn test_long_lines() {
     assert!(buffer.is_valid_position(Position { line: 0, column: 1000 }));
     assert!(!buffer.is_valid_position(Position { line: 0, column: 1001 }));
 }
+
+// Navigation command tests
+
+#[test]
+fn test_delete_forward() {
+    let mut buffer = Buffer::from_str("ABC");
+
+    // Delete character at position 0 (delete 'A')
+    assert!(buffer.delete_forward(Position { line: 0, column: 0 }));
+    assert_eq!(buffer.content(), "BC");
+    assert!(buffer.is_dirty());
+
+    // Delete character at position 1 (delete 'C')
+    assert!(buffer.delete_forward(Position { line: 0, column: 1 }));
+    assert_eq!(buffer.content(), "B");
+}
+
+#[test]
+fn test_delete_forward_at_line_end() {
+    let mut buffer = Buffer::from_str("Line1\nLine2");
+
+    // Delete newline at end of first line (joins lines)
+    assert!(buffer.delete_forward(Position { line: 0, column: 5 }));
+    assert_eq!(buffer.content(), "Line1Line2");
+}
+
+#[test]
+fn test_delete_forward_at_buffer_end() {
+    let mut buffer = Buffer::from_str("ABC");
+
+    // Try to delete at end of buffer (should return false)
+    assert!(!buffer.delete_forward(Position { line: 0, column: 3 }));
+    assert_eq!(buffer.content(), "ABC");
+}
+
+#[test]
+fn test_get_line_start() {
+    let buffer = Buffer::from_str("Hello World");
+
+    // From middle of line
+    let start = buffer.get_line_start(Position { line: 0, column: 5 });
+    assert_eq!(start, Position { line: 0, column: 0 });
+
+    // Already at start
+    let start = buffer.get_line_start(Position { line: 0, column: 0 });
+    assert_eq!(start, Position { line: 0, column: 0 });
+}
+
+#[test]
+fn test_get_line_end() {
+    let buffer = Buffer::from_str("Hello");
+
+    // From start of line
+    let end = buffer.get_line_end(Position { line: 0, column: 0 });
+    assert_eq!(end, Position { line: 0, column: 5 });
+
+    // From middle of line
+    let end = buffer.get_line_end(Position { line: 0, column: 2 });
+    assert_eq!(end, Position { line: 0, column: 5 });
+
+    // Already at end
+    let end = buffer.get_line_end(Position { line: 0, column: 5 });
+    assert_eq!(end, Position { line: 0, column: 5 });
+}
+
+#[test]
+fn test_get_line_end_with_newline() {
+    let buffer = Buffer::from_str("Hello\nWorld");
+
+    // End position excludes newline
+    let end = buffer.get_line_end(Position { line: 0, column: 2 });
+    assert_eq!(end, Position { line: 0, column: 5 });
+}
+
+#[test]
+fn test_page_up() {
+    let buffer = Buffer::from_str("Line1\nLine2\nLine3\nLine4\nLine5");
+
+    // Move up by 2 lines from line 4
+    let new_pos = buffer.page_up(Position { line: 4, column: 0 }, 2);
+    assert_eq!(new_pos, Position { line: 2, column: 0 });
+
+    // Move up by 3 lines from line 2
+    let new_pos = buffer.page_up(Position { line: 2, column: 0 }, 3);
+    assert_eq!(new_pos, Position { line: 0, column: 0 });
+
+    // Move up beyond start (clamps to line 0)
+    let new_pos = buffer.page_up(Position { line: 1, column: 0 }, 5);
+    assert_eq!(new_pos, Position { line: 0, column: 0 });
+}
+
+#[test]
+fn test_page_up_column_clamping() {
+    let buffer = Buffer::from_str("LongLine123\nShort\nLine3");
+
+    // Start at column 10 on long line, move to shorter line
+    let new_pos = buffer.page_up(Position { line: 2, column: 10 }, 1);
+    // Column should be clamped to length of "Short" (5 characters)
+    assert_eq!(new_pos, Position { line: 1, column: 5 });
+}
+
+#[test]
+fn test_page_down() {
+    let buffer = Buffer::from_str("Line1\nLine2\nLine3\nLine4\nLine5");
+
+    // Move down by 2 lines from line 0
+    let new_pos = buffer.page_down(Position { line: 0, column: 0 }, 2);
+    assert_eq!(new_pos, Position { line: 2, column: 0 });
+
+    // Move down by 3 lines from line 1
+    let new_pos = buffer.page_down(Position { line: 1, column: 0 }, 3);
+    assert_eq!(new_pos, Position { line: 4, column: 0 });
+
+    // Move down beyond end (clamps to last line)
+    let new_pos = buffer.page_down(Position { line: 3, column: 0 }, 5);
+    assert_eq!(new_pos, Position { line: 4, column: 0 });
+}
+
+#[test]
+fn test_page_down_column_clamping() {
+    let buffer = Buffer::from_str("LongLine123\nShort\nLine3");
+
+    // Start at column 10 on long line, move to shorter line
+    let new_pos = buffer.page_down(Position { line: 0, column: 10 }, 1);
+    // Column should be clamped to length of "Short" (5 characters)
+    assert_eq!(new_pos, Position { line: 1, column: 5 });
+}
+
+#[test]
+fn test_page_navigation_empty_buffer() {
+    let buffer = Buffer::new();
+
+    // Page up from origin stays at origin
+    let new_pos = buffer.page_up(Position::origin(), 10);
+    assert_eq!(new_pos, Position::origin());
+
+    // Page down from origin stays at origin (only 1 line in empty buffer)
+    let new_pos = buffer.page_down(Position::origin(), 10);
+    assert_eq!(new_pos, Position::origin());
+}
+
+#[test]
+fn test_page_navigation_single_line() {
+    let buffer = Buffer::from_str("Single line");
+
+    // Page up/down on single line buffer stays on line 0
+    let new_pos = buffer.page_up(Position { line: 0, column: 5 }, 5);
+    assert_eq!(new_pos, Position { line: 0, column: 5 });
+
+    let new_pos = buffer.page_down(Position { line: 0, column: 5 }, 5);
+    assert_eq!(new_pos, Position { line: 0, column: 5 });
+}

@@ -42,8 +42,26 @@ pub enum EditorCommand {
     /// Delete the character before the cursor (backspace)
     DeleteChar,
 
+    /// Delete the character at the cursor position (forward delete)
+    DeleteForward,
+
     /// Move the cursor in the specified direction
     MoveCursor(Direction),
+
+    /// Move cursor to the start of the current line (column 0)
+    MoveToLineStart,
+
+    /// Move cursor to the end of the current line
+    MoveToLineEnd,
+
+    /// Scroll up by one page (viewport height)
+    PageUp,
+
+    /// Scroll down by one page (viewport height)
+    PageDown,
+
+    /// Insert a tab character or spaces at the cursor position
+    InsertTab,
 
     /// Save the current buffer to file
     Save,
@@ -157,12 +175,22 @@ impl FromStr for EditorCommand {
 
             // Editing operations
             "delete_char" | "delete" | "backspace" => Ok(EditorCommand::DeleteChar),
+            "delete_forward" | "delete.forward" | "del" => Ok(EditorCommand::DeleteForward),
 
             // Navigation commands
             "move.up" | "move_up" | "up" => Ok(EditorCommand::MoveCursor(Direction::Up)),
             "move.down" | "move_down" | "down" => Ok(EditorCommand::MoveCursor(Direction::Down)),
             "move.left" | "move_left" | "left" => Ok(EditorCommand::MoveCursor(Direction::Left)),
             "move.right" | "move_right" | "right" => Ok(EditorCommand::MoveCursor(Direction::Right)),
+            "move.line_start" | "move_line_start" | "line_start" | "home" => {
+                Ok(EditorCommand::MoveToLineStart)
+            }
+            "move.line_end" | "move_line_end" | "line_end" | "end" => {
+                Ok(EditorCommand::MoveToLineEnd)
+            }
+            "page.up" | "page_up" | "pageup" => Ok(EditorCommand::PageUp),
+            "page.down" | "page_down" | "pagedown" => Ok(EditorCommand::PageDown),
+            "insert_tab" | "tab" => Ok(EditorCommand::InsertTab),
 
             // Mode switching commands
             "mode.insert" | "insert_mode" | "insert" => {

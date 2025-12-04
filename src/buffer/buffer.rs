@@ -135,6 +135,136 @@ impl Buffer {
         false
     }
 
+    /// Deletes the character at the cursor position (forward delete)
+    ///
+    /// This is different from backspace - it deletes the character at the cursor,
+    /// not the character before it. If at the end of a line, it joins with the next line.
+    ///
+    /// Returns `true` if deletion was successful, `false` if at end of buffer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::buffer::{Buffer, Position};
+    ///
+    /// let mut buffer = Buffer::from_str("ABC");
+    /// assert!(buffer.delete_forward(Position { line: 0, column: 0 }));
+    /// assert_eq!(buffer.content(), "BC");
+    ///
+    /// // At end of line, joins with next line
+    /// let mut buffer = Buffer::from_str("Line1\nLine2");
+    /// assert!(buffer.delete_forward(Position { line: 0, column: 5 }));
+    /// assert_eq!(buffer.content(), "Line1Line2");
+    /// ```
+    pub fn delete_forward(&mut self, pos: Position) -> bool {
+        self.delete_char_at(pos)
+    }
+
+    /// Calculates the column position for the start of a line (column 0)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::buffer::{Buffer, Position};
+    ///
+    /// let buffer = Buffer::from_str("Hello World");
+    /// let start_pos = buffer.get_line_start(Position { line: 0, column: 5 });
+    /// assert_eq!(start_pos, Position { line: 0, column: 0 });
+    /// ```
+    pub fn get_line_start(&self, pos: Position) -> Position {
+        Position {
+            line: pos.line,
+            column: 0,
+        }
+    }
+
+    /// Calculates the column position for the end of the current line
+    ///
+    /// Returns a position at the last character of the line (excluding newline).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::buffer::{Buffer, Position};
+    ///
+    /// let buffer = Buffer::from_str("Hello");
+    /// let end_pos = buffer.get_line_end(Position { line: 0, column: 0 });
+    /// assert_eq!(end_pos, Position { line: 0, column: 5 });
+    ///
+    /// let buffer = Buffer::from_str("Hello\nWorld");
+    /// let end_pos = buffer.get_line_end(Position { line: 0, column: 2 });
+    /// assert_eq!(end_pos, Position { line: 0, column: 5 });
+    /// ```
+    pub fn get_line_end(&self, pos: Position) -> Position {
+        let line_len = self.line_len(pos.line).unwrap_or(0);
+        Position {
+            line: pos.line,
+            column: line_len,
+        }
+    }
+
+    /// Calculates the position after moving up by viewport_height lines
+    ///
+    /// Clamps to the first line if moving beyond buffer start.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::buffer::{Buffer, Position};
+    ///
+    /// let buffer = Buffer::from_str("Line1\nLine2\nLine3\nLine4\nLine5");
+    /// let new_pos = buffer.page_up(Position { line: 4, column: 0 }, 2);
+    /// assert_eq!(new_pos, Position { line: 2, column: 0 });
+    ///
+    /// // Clamps to first line
+    /// let new_pos = buffer.page_up(Position { line: 1, column: 0 }, 5);
+    /// assert_eq!(new_pos, Position { line: 0, column: 0 });
+    /// ```
+    pub fn page_up(&self, pos: Position, viewport_height: usize) -> Position {
+        let new_line = pos.line.saturating_sub(viewport_height);
+        let column = self.clamp_column_to_line(new_line, pos.column);
+        Position {
+            line: new_line,
+            column,
+        }
+    }
+
+    /// Calculates the position after moving down by viewport_height lines
+    ///
+    /// Clamps to the last line if moving beyond buffer end.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::buffer::{Buffer, Position};
+    ///
+    /// let buffer = Buffer::from_str("Line1\nLine2\nLine3\nLine4\nLine5");
+    /// let new_pos = buffer.page_down(Position { line: 0, column: 0 }, 2);
+    /// assert_eq!(new_pos, Position { line: 2, column: 0 });
+    ///
+    /// // Clamps to last line
+    /// let new_pos = buffer.page_down(Position { line: 3, column: 0 }, 5);
+    /// assert_eq!(new_pos, Position { line: 4, column: 0 });
+    /// ```
+    pub fn page_down(&self, pos: Position, viewport_height: usize) -> Position {
+        let max_line = self.rope.len_lines().saturating_sub(1);
+        let new_line = (pos.line + viewport_height).min(max_line);
+        let column = self.clamp_column_to_line(new_line, pos.column);
+        Position {
+            line: new_line,
+            column,
+        }
+    }
+
+    /// Clamps a column to the length of a specific line
+    ///
+    /// Used internally for vertical navigation to keep cursor in valid positions.
+    fn clamp_column_to_line(&self, line: usize, column: usize) -> usize {
+        self.line_len(line)
+            .map(|len| column.min(len))
+            .unwrap_or(0)
+    }
+
     /// Returns the full buffer content as a String
     ///
     /// # Examples
