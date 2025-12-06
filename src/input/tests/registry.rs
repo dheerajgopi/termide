@@ -873,3 +873,37 @@ fn test_integration_complete_sequence_workflow() {
     assert!(result.is_some());
     assert_eq!(result.unwrap(), &EditorCommand::Save);
 }
+
+#[test]
+fn test_user_priority_overrides_default_priority() {
+    use crate::input::keybinding::Priority;
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+    
+    // Register default Ctrl+S -> Save
+    let default_binding = create_binding(
+        's',
+        KeyModifiers::CONTROL,
+        EditorCommand::Save,
+        BindingContext::Global,
+        Priority::Default,
+    );
+    
+    // Register user Ctrl+S -> Quit (higher priority)
+    let user_binding = create_binding(
+        's',
+        KeyModifiers::CONTROL,
+        EditorCommand::Quit,
+        BindingContext::Global,
+        Priority::User,
+    );
+    
+    registry.register(default_binding).expect("default");
+    registry.register(user_binding).expect("user");
+    
+    // Add Ctrl+S to sequence buffer
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+    
+    // Find match - should return User priority binding (Quit)
+    let cmd = registry.find_match(EditorMode::Normal).expect("Should find match");
+    assert_eq!(cmd, &EditorCommand::Quit, "User priority should override Default");
+}

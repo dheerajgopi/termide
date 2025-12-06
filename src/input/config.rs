@@ -49,7 +49,7 @@ use crate::input::registry::{BindingError, KeyBindingRegistry};
 use crate::input::{CommandParseError, EditorCommand, ParseError};
 use serde::Deserialize;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -371,4 +371,38 @@ fn format_command_error(error: &CommandParseError) -> String {
             format!("invalid plugin command format '{}'", fmt)
         }
     }
+}
+
+/// Get the platform-specific path to the user's keybinding configuration file
+///
+/// This function returns the standard configuration file path for the current platform:
+/// - Linux/macOS: `~/.config/termide/config.toml`
+/// - Windows: `%APPDATA%\termide\config.toml`
+///
+/// # Returns
+///
+/// - `Some(PathBuf)` - Path to the config file if a config directory could be determined
+/// - `None` - If the system config directory could not be determined (rare)
+///
+/// # Examples
+///
+/// ```no_run
+/// use termide::input::config::get_config_path;
+///
+/// if let Some(path) = get_config_path() {
+///     println!("Config file location: {}", path.display());
+/// }
+/// ```
+///
+/// # Platform Behavior
+///
+/// - **Linux**: Uses `$XDG_CONFIG_HOME/termide/config.toml` or `~/.config/termide/config.toml`
+/// - **macOS**: Uses `~/Library/Application Support/termide/config.toml`
+/// - **Windows**: Uses `%APPDATA%\termide\config.toml`
+pub fn get_config_path() -> Option<PathBuf> {
+    dirs::config_dir().map(|mut path| {
+        path.push("termide");
+        path.push("config.toml");
+        path
+    })
 }

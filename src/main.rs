@@ -18,6 +18,7 @@ use termide::buffer::Position;
 use termide::editor::{EditorMode, EditorState};
 use termide::input::{Direction, EditorCommand};
 use termide::input::bindings::register_default_bindings;
+use termide::input::config::{get_config_path, load_user_keybindings};
 use termide::input::input_handler::{InputHandler, MatchResult};
 use termide::ui::Renderer;
 
@@ -26,6 +27,9 @@ mod editor;
 mod file_io;
 mod input;
 mod ui;
+
+#[cfg(test)]
+mod tests;
 
 fn main() -> Result<()> {
     // Set up panic handler to ensure terminal cleanup
@@ -51,6 +55,30 @@ fn main() -> Result<()> {
     let mut input_handler = InputHandler::with_timeout(Duration::from_millis(1000));
     register_default_bindings(&mut input_handler.registry_mut())
         .context("Failed to register default keybindings")?;
+
+    // Load user config if available (after defaults so User priority takes effect)
+    if let Some(config_path) = get_config_path() {
+        match load_user_keybindings(&mut input_handler.registry_mut(), &config_path) {
+            Ok(count) if count > 0 => {
+                eprintln!("Loaded {} user keybinding(s) from {}", count, config_path.display());
+            }
+            Ok(_) => {
+                // Config file exists but is empty - silent
+            }
+            Err(e) => {
+                use std::io::ErrorKind;
+                // File not found is OK (silent), other errors get warnings
+                if let termide::input::config::ConfigError::ReadError { ref source, .. } = e {
+                    if source.kind() != ErrorKind::NotFound {
+                        eprintln!("Warning: {}", e);
+                    }
+                } else {
+                    // Parse errors and other issues - warn but continue
+                    eprintln!("Warning: {}", e);
+                }
+            }
+        }
+    }
 
     // Initialize cursor position
     let mut cursor = Position::origin();
@@ -458,54 +486,4 @@ fn setup_panic_handler() {
         // Call the original panic hook
         original_hook(panic_info);
     }));
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_args_no_file() {
-        let args = vec!["termide".to_string()];
-        let result = parse_args(&args).unwrap();
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_parse_args_with_file() {
-        let args = vec!["termide".to_string(), "test.txt".to_string()];
-        let result = parse_args(&args).unwrap();
-        assert_eq!(result, Some("test.txt".to_string()));
-    }
-
-    #[test]
-    fn test_parse_args_too_many() {
-        let args = vec![
-            "termide".to_string(),
-            "file1.txt".to_string(),
-            "file2.txt".to_string(),
-        ];
-        let result = parse_args(&args);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Usage:"));
-    }
-
-    #[test]
-    fn test_clamp_column_to_line() {
-        let mut buffer = termide::buffer::Buffer::new();
-        buffer.insert_char('H', Position::origin());
-        buffer.insert_char('e', Position::new(0, 1));
-        buffer.insert_char('l', Position::new(0, 2));
-        buffer.insert_char('l', Position::new(0, 3));
-        buffer.insert_char('o', Position::new(0, 4));
-
-        // Column within bounds
-        assert_eq!(clamp_column_to_line(0, 3, &buffer), 3);
-
-        // Column beyond line length
-        assert_eq!(clamp_column_to_line(0, 10, &buffer), 5);
-
-        // Empty line
-        assert_eq!(clamp_column_to_line(1, 5, &buffer), 0);
-    }
 }

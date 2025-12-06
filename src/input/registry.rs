@@ -259,7 +259,7 @@ impl KeyBindingRegistry {
         // Find the correct position to insert based on priority (descending order)
         let insert_pos = self
             .bindings
-            .binary_search_by(|existing| binding.priority().cmp(&existing.priority()))
+            .binary_search_by(|existing| existing.priority().cmp(&binding.priority()).reverse())
             .unwrap_or_else(|pos| pos);
 
         self.bindings.insert(insert_pos, binding);
