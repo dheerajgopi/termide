@@ -334,6 +334,26 @@ fn execute_command(
             input_handler.on_mode_change();
             state.set_status_message("Info: Save cancelled".to_string());
         }
+        // Selection commands (placeholder - not yet implemented)
+        EditorCommand::SelectLeft
+        | EditorCommand::SelectRight
+        | EditorCommand::SelectUp
+        | EditorCommand::SelectDown
+        | EditorCommand::SelectLineStart
+        | EditorCommand::SelectLineEnd
+        | EditorCommand::SelectAll => {
+            state.set_status_message(format!(
+                "Command '{:?}' is not yet implemented. This feature is planned for a future release.",
+                command
+            ));
+        }
+        // Clipboard commands (placeholder - not yet implemented)
+        EditorCommand::Copy | EditorCommand::Cut | EditorCommand::Paste => {
+            state.set_status_message(format!(
+                "Command '{:?}' is not yet implemented. This feature is planned for a future release.",
+                command
+            ));
+        }
     }
 
     Ok(())

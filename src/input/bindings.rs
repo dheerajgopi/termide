@@ -158,6 +158,12 @@ pub fn global_bindings() -> Vec<KeyBinding> {
 /// - Printable characters → Insert at cursor
 /// - `Enter` → Insert newline
 /// - `Backspace` → Delete character before cursor
+/// - `Delete` → Delete character at cursor (forward delete)
+/// - `Tab` → Insert tab character
+/// - `Home` → Move to start of line
+/// - `End` → Move to end of line
+/// - `PageUp` → Scroll up one page
+/// - `PageDown` → Scroll down one page
 /// - `Esc` → Switch to Normal mode
 /// - Arrow keys → Move cursor (shared with Normal mode)
 ///
@@ -193,6 +199,15 @@ pub fn insert_mode_bindings() -> Vec<KeyBinding> {
         Priority::Default,
     ));
 
+    // Tab key - insert tab character (Insert mode only)
+    bindings.push(KeyBinding::new(
+        KeySequence::new(vec![KeyPattern::new(KeyCode::Tab, KeyModifiers::NONE)])
+            .expect("Tab is valid"),
+        EditorCommand::InsertTab,
+        BindingContext::Mode(EditorMode::Insert),
+        Priority::Default,
+    ));
+
     // Escape - switch to Normal mode
     bindings.push(KeyBinding::new(
         KeySequence::new(vec![KeyPattern::new(KeyCode::Esc, KeyModifiers::NONE)])
@@ -204,6 +219,12 @@ pub fn insert_mode_bindings() -> Vec<KeyBinding> {
 
     // Arrow key navigation (shared with Normal mode)
     bindings.extend(arrow_key_navigation(vec![
+        EditorMode::Insert,
+        EditorMode::Normal,
+    ]));
+
+    // Navigation commands (shared with Normal mode)
+    bindings.extend(navigation_commands(vec![
         EditorMode::Insert,
         EditorMode::Normal,
     ]));
@@ -223,6 +244,11 @@ pub fn insert_mode_bindings() -> Vec<KeyBinding> {
 ///
 /// - `i` → Switch to Insert mode
 /// - Arrow keys → Move cursor (shared with Insert mode)
+/// - `Delete` → Delete character at cursor (shared with Insert mode)
+/// - `Home` → Move to start of line (shared with Insert mode)
+/// - `End` → Move to end of line (shared with Insert mode)
+/// - `PageUp` → Scroll up one page (shared with Insert mode)
+/// - `PageDown` → Scroll down one page (shared with Insert mode)
 ///
 /// # Examples
 ///
@@ -249,6 +275,9 @@ pub fn normal_mode_bindings() -> Vec<KeyBinding> {
 
     // Arrow key navigation is already added via insert_mode_bindings
     // with Modes([Insert, Normal]) context, so we don't duplicate it here
+    //
+    // Navigation commands (Delete, Home, End, PageUp, PageDown) are also
+    // already added via insert_mode_bindings with Modes([Insert, Normal]) context
 
     bindings
 }
@@ -365,6 +394,84 @@ pub fn arrow_key_navigation(modes: Vec<EditorMode>) -> Vec<KeyBinding> {
             KeySequence::new(vec![KeyPattern::new(KeyCode::Right, KeyModifiers::NONE)])
                 .expect("Right is valid"),
             EditorCommand::MoveCursor(Direction::Right),
+            context,
+            Priority::Default,
+        ),
+    ]
+}
+
+/// Returns navigation command bindings for the specified modes
+///
+/// This helper function creates bindings for advanced navigation commands
+/// like Delete, Home, End, PageUp, and PageDown, avoiding duplication by
+/// defining them once and reusing across modes.
+///
+/// # Arguments
+///
+/// * `modes` - Vector of modes in which these bindings should be active
+///
+/// # Bindings
+///
+/// - `Delete` → Delete character at cursor (forward delete)
+/// - `Home` → Move cursor to start of line
+/// - `End` → Move cursor to end of line
+/// - `PageUp` → Scroll up by one page (viewport height)
+/// - `PageDown` → Scroll down by one page (viewport height)
+///
+/// # Examples
+///
+/// ```
+/// use termide::input::bindings::navigation_commands;
+/// use termide::editor::EditorMode;
+///
+/// // Create navigation command bindings for Insert and Normal modes
+/// let bindings = navigation_commands(vec![EditorMode::Insert, EditorMode::Normal]);
+/// assert_eq!(bindings.len(), 5);
+/// ```
+pub fn navigation_commands(modes: Vec<EditorMode>) -> Vec<KeyBinding> {
+    let context = BindingContext::Modes(modes);
+
+    vec![
+        // Delete key - forward delete
+        KeyBinding::new(
+            KeySequence::new(vec![KeyPattern::new(KeyCode::Delete, KeyModifiers::NONE)])
+                .expect("Delete is valid"),
+            EditorCommand::DeleteForward,
+            context.clone(),
+            Priority::Default,
+        ),
+        // Home key - move to line start
+        KeyBinding::new(
+            KeySequence::new(vec![KeyPattern::new(KeyCode::Home, KeyModifiers::NONE)])
+                .expect("Home is valid"),
+            EditorCommand::MoveToLineStart,
+            context.clone(),
+            Priority::Default,
+        ),
+        // End key - move to line end
+        KeyBinding::new(
+            KeySequence::new(vec![KeyPattern::new(KeyCode::End, KeyModifiers::NONE)])
+                .expect("End is valid"),
+            EditorCommand::MoveToLineEnd,
+            context.clone(),
+            Priority::Default,
+        ),
+        // PageUp key - scroll up one page
+        KeyBinding::new(
+            KeySequence::new(vec![KeyPattern::new(KeyCode::PageUp, KeyModifiers::NONE)])
+                .expect("PageUp is valid"),
+            EditorCommand::PageUp,
+            context.clone(),
+            Priority::Default,
+        ),
+        // PageDown key - scroll down one page
+        KeyBinding::new(
+            KeySequence::new(vec![KeyPattern::new(
+                KeyCode::PageDown,
+                KeyModifiers::NONE,
+            )])
+            .expect("PageDown is valid"),
+            EditorCommand::PageDown,
             context,
             Priority::Default,
         ),

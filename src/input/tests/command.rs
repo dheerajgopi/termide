@@ -479,3 +479,99 @@ fn test_parse_insert_tab_command() {
     let cmd = EditorCommand::from_str("tab").unwrap();
     assert_eq!(cmd, EditorCommand::InsertTab);
 }
+
+// ============================================================================
+// Placeholder Commands - Selection Operations (Future Features)
+// ============================================================================
+
+#[test]
+fn test_parse_select_left_command() {
+    let cmd = EditorCommand::from_str("select.left").unwrap();
+    assert_eq!(cmd, EditorCommand::SelectLeft);
+
+    // Alternative form
+    let cmd = EditorCommand::from_str("select_left").unwrap();
+    assert_eq!(cmd, EditorCommand::SelectLeft);
+}
+
+#[test]
+fn test_parse_select_right_command() {
+    let cmd = EditorCommand::from_str("select.right").unwrap();
+    assert_eq!(cmd, EditorCommand::SelectRight);
+
+    // Alternative form
+    let cmd = EditorCommand::from_str("select_right").unwrap();
+    assert_eq!(cmd, EditorCommand::SelectRight);
+}
+
+#[test]
+fn test_parse_select_up_command() {
+    let cmd = EditorCommand::from_str("select.up").unwrap();
+    assert_eq!(cmd, EditorCommand::SelectUp);
+
+    // Alternative form
+    let cmd = EditorCommand::from_str("select_up").unwrap();
+    assert_eq!(cmd, EditorCommand::SelectUp);
+}
+
+#[test]
+fn test_parse_select_down_command() {
+    let cmd = EditorCommand::from_str("select.down").unwrap();
+    assert_eq!(cmd, EditorCommand::SelectDown);
+
+    // Alternative form
+    let cmd = EditorCommand::from_str("select_down").unwrap();
+    assert_eq!(cmd, EditorCommand::SelectDown);
+}
+
+#[test]
+fn test_parse_select_line_start_command() {
+    let cmd = EditorCommand::from_str("select.line_start").unwrap();
+    assert_eq!(cmd, EditorCommand::SelectLineStart);
+
+    // Alternative form
+    let cmd = EditorCommand::from_str("select_line_start").unwrap();
+    assert_eq!(cmd, EditorCommand::SelectLineStart);
+}
+
+#[test]
+fn test_parse_select_line_end_command() {
+    let cmd = EditorCommand::from_str("select.line_end").unwrap();
+    assert_eq!(cmd, EditorCommand::SelectLineEnd);
+
+    // Alternative form
+    let cmd = EditorCommand::from_str("select_line_end").unwrap();
+    assert_eq!(cmd, EditorCommand::SelectLineEnd);
+}
+
+#[test]
+fn test_parse_select_all_command() {
+    let cmd = EditorCommand::from_str("select.all").unwrap();
+    assert_eq!(cmd, EditorCommand::SelectAll);
+
+    // Alternative form
+    let cmd = EditorCommand::from_str("select_all").unwrap();
+    assert_eq!(cmd, EditorCommand::SelectAll);
+}
+
+// ============================================================================
+// Placeholder Commands - Clipboard Operations (Future Features)
+// ============================================================================
+
+#[test]
+fn test_parse_copy_command() {
+    let cmd = EditorCommand::from_str("copy").unwrap();
+    assert_eq!(cmd, EditorCommand::Copy);
+}
+
+#[test]
+fn test_parse_cut_command() {
+    let cmd = EditorCommand::from_str("cut").unwrap();
+    assert_eq!(cmd, EditorCommand::Cut);
+}
+
+#[test]
+fn test_parse_paste_command() {
+    let cmd = EditorCommand::from_str("paste").unwrap();
+    assert_eq!(cmd, EditorCommand::Paste);
+}

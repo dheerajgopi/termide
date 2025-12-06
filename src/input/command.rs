@@ -11,6 +11,43 @@ use thiserror::Error;
 /// and the current editor mode. They represent high-level actions
 /// that the editor should perform.
 ///
+/// # Command Categories
+///
+/// ## Editing Commands
+/// - [`InsertChar`](Self::InsertChar) - Insert character at cursor
+/// - [`DeleteChar`](Self::DeleteChar) - Delete character before cursor (Backspace)
+/// - [`DeleteForward`](Self::DeleteForward) - Delete character at cursor (Delete key)
+/// - [`InsertTab`](Self::InsertTab) - Insert tab character or spaces
+///
+/// ## Navigation Commands
+/// - [`MoveCursor`](Self::MoveCursor) - Move cursor in cardinal directions
+/// - [`MoveToLineStart`](Self::MoveToLineStart) - Move to start of line (Home)
+/// - [`MoveToLineEnd`](Self::MoveToLineEnd) - Move to end of line (End)
+/// - [`PageUp`](Self::PageUp) - Scroll up by viewport height
+/// - [`PageDown`](Self::PageDown) - Scroll down by viewport height
+///
+/// ## File Operations
+/// - [`Save`](Self::Save) - Save current buffer to file (Ctrl+S)
+/// - [`Quit`](Self::Quit) - Quit the editor (Ctrl+Q)
+///
+/// ## Mode Switching
+/// - [`ChangeMode`](Self::ChangeMode) - Switch between Insert/Normal/Prompt modes
+///
+/// ## Selection Commands (Not Yet Implemented)
+/// - [`SelectLeft`](Self::SelectLeft), [`SelectRight`](Self::SelectRight)
+/// - [`SelectUp`](Self::SelectUp), [`SelectDown`](Self::SelectDown)
+/// - [`SelectLineStart`](Self::SelectLineStart), [`SelectLineEnd`](Self::SelectLineEnd)
+/// - [`SelectAll`](Self::SelectAll)
+///
+/// ## Clipboard Commands (Not Yet Implemented)
+/// - [`Copy`](Self::Copy), [`Cut`](Self::Cut), [`Paste`](Self::Paste)
+///
+/// ## Prompt Commands
+/// - [`PromptInsertChar`](Self::PromptInsertChar) - Insert character in prompt
+/// - [`PromptDeleteChar`](Self::PromptDeleteChar) - Delete character from prompt
+/// - [`AcceptPrompt`](Self::AcceptPrompt) - Accept prompt input (Enter)
+/// - [`CancelPrompt`](Self::CancelPrompt) - Cancel prompt (Esc)
+///
 /// # Examples
 ///
 /// ```
@@ -37,51 +74,251 @@ use thiserror::Error;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditorCommand {
     /// Insert a character at the current cursor position
+    ///
+    /// **Available in**: Insert mode
+    ///
+    /// **Default Keybinding**: Any printable character
+    ///
+    /// Inserts the given character at the current cursor position and advances
+    /// the cursor. Handles Unicode characters correctly.
     InsertChar(char),
 
     /// Delete the character before the cursor (backspace)
+    ///
+    /// **Available in**: Insert mode
+    ///
+    /// **Default Keybinding**: `Backspace`
+    ///
+    /// Deletes the character immediately before the cursor position. If the cursor
+    /// is at the start of a line (column 0), this joins the current line with the
+    /// previous line.
     DeleteChar,
 
     /// Delete the character at the cursor position (forward delete)
+    ///
+    /// **Available in**: Insert mode, Normal mode
+    ///
+    /// **Default Keybinding**: `Delete`
+    ///
+    /// Deletes the character at the current cursor position (not before it).
+    /// If the cursor is at the end of a line, this joins the current line with
+    /// the next line.
     DeleteForward,
 
     /// Move the cursor in the specified direction
+    ///
+    /// **Available in**: Insert mode, Normal mode
+    ///
+    /// **Default Keybindings**: Arrow keys (`Up`, `Down`, `Left`, `Right`)
+    ///
+    /// Moves the cursor one position in the specified direction. Handles line
+    /// boundaries correctly (e.g., moving up from first line stays at first line).
     MoveCursor(Direction),
 
     /// Move cursor to the start of the current line (column 0)
+    ///
+    /// **Available in**: Insert mode, Normal mode
+    ///
+    /// **Default Keybinding**: `Home`
+    ///
+    /// Moves the cursor to the first column (column 0) of the current line.
     MoveToLineStart,
 
     /// Move cursor to the end of the current line
+    ///
+    /// **Available in**: Insert mode, Normal mode
+    ///
+    /// **Default Keybinding**: `End`
+    ///
+    /// Moves the cursor to the end of the current line (after the last character,
+    /// before the newline if present).
     MoveToLineEnd,
 
     /// Scroll up by one page (viewport height)
+    ///
+    /// **Available in**: Insert mode, Normal mode
+    ///
+    /// **Default Keybinding**: `PageUp`
+    ///
+    /// Scrolls the view up by approximately one viewport height (the number of
+    /// visible lines on screen). The cursor moves with the viewport, maintaining
+    /// its column position where possible.
     PageUp,
 
     /// Scroll down by one page (viewport height)
+    ///
+    /// **Available in**: Insert mode, Normal mode
+    ///
+    /// **Default Keybinding**: `PageDown`
+    ///
+    /// Scrolls the view down by approximately one viewport height (the number of
+    /// visible lines on screen). The cursor moves with the viewport, maintaining
+    /// its column position where possible.
     PageDown,
 
     /// Insert a tab character or spaces at the cursor position
+    ///
+    /// **Available in**: Insert mode
+    ///
+    /// **Default Keybinding**: `Tab`
+    ///
+    /// Inserts a tab character at the cursor position. Future versions may support
+    /// configurable tab expansion (converting tabs to spaces) and tab width settings.
     InsertTab,
 
+    // Selection commands (future features - not yet implemented)
+    /// Extend selection left by one character
+    ///
+    /// **Status**: Not yet implemented (placeholder for future feature)
+    ///
+    /// This command will extend the current selection one character to the left.
+    /// If no selection exists, it will start a new selection from the cursor position.
+    SelectLeft,
+
+    /// Extend selection right by one character
+    ///
+    /// **Status**: Not yet implemented (placeholder for future feature)
+    ///
+    /// This command will extend the current selection one character to the right.
+    /// If no selection exists, it will start a new selection from the cursor position.
+    SelectRight,
+
+    /// Extend selection up by one line
+    ///
+    /// **Status**: Not yet implemented (placeholder for future feature)
+    ///
+    /// This command will extend the current selection one line upward.
+    /// If no selection exists, it will start a new selection from the cursor position.
+    SelectUp,
+
+    /// Extend selection down by one line
+    ///
+    /// **Status**: Not yet implemented (placeholder for future feature)
+    ///
+    /// This command will extend the current selection one line downward.
+    /// If no selection exists, it will start a new selection from the cursor position.
+    SelectDown,
+
+    /// Extend selection to the start of the current line
+    ///
+    /// **Status**: Not yet implemented (placeholder for future feature)
+    ///
+    /// This command will extend the current selection to the start of the line.
+    /// If no selection exists, it will start a new selection from the cursor position.
+    SelectLineStart,
+
+    /// Extend selection to the end of the current line
+    ///
+    /// **Status**: Not yet implemented (placeholder for future feature)
+    ///
+    /// This command will extend the current selection to the end of the line.
+    /// If no selection exists, it will start a new selection from the cursor position.
+    SelectLineEnd,
+
+    /// Select all text in the buffer
+    ///
+    /// **Status**: Not yet implemented (placeholder for future feature)
+    ///
+    /// This command will select all text in the current buffer.
+    SelectAll,
+
+    // Clipboard commands (future features - not yet implemented)
+    /// Copy selected text to clipboard
+    ///
+    /// **Status**: Not yet implemented (placeholder for future feature)
+    ///
+    /// This command will copy the currently selected text to the system clipboard.
+    /// If no text is selected, this command will have no effect.
+    Copy,
+
+    /// Cut selected text to clipboard
+    ///
+    /// **Status**: Not yet implemented (placeholder for future feature)
+    ///
+    /// This command will cut the currently selected text to the system clipboard,
+    /// removing it from the buffer. If no text is selected, this command will have no effect.
+    Cut,
+
+    /// Paste text from clipboard
+    ///
+    /// **Status**: Not yet implemented (placeholder for future feature)
+    ///
+    /// This command will paste text from the system clipboard at the current cursor position.
+    /// If a selection exists, it will be replaced with the pasted text.
+    Paste,
+
     /// Save the current buffer to file
+    ///
+    /// **Available in**: Insert mode, Normal mode (Global binding)
+    ///
+    /// **Default Keybinding**: `Ctrl+S` (or `Cmd+S` on macOS)
+    ///
+    /// Saves the current buffer contents to its associated file. If the buffer
+    /// has no associated file path, the editor should prompt for a filename.
+    /// Sets the buffer's dirty flag to false after successful save.
     Save,
 
     /// Quit the editor
+    ///
+    /// **Available in**: Insert mode, Normal mode (Global binding)
+    ///
+    /// **Default Keybinding**: `Ctrl+Q` (or `Cmd+Q` on macOS)
+    ///
+    /// Quits the editor. If there are unsaved changes in the buffer, the editor
+    /// should prompt for confirmation before quitting to prevent data loss.
     Quit,
 
     /// Change the editor mode
+    ///
+    /// **Available in**: Mode-dependent
+    ///
+    /// **Default Keybindings**:
+    /// - `Esc` in Insert mode → Normal mode
+    /// - `i` in Normal mode → Insert mode
+    /// - `Esc` in Prompt mode → (cancels prompt, returns to previous mode)
+    ///
+    /// Switches the editor between different modes (Insert, Normal, Prompt).
+    /// Each mode has different keybinding behavior and editing capabilities.
     ChangeMode(EditorMode),
 
     /// Insert a character in the prompt input
+    ///
+    /// **Available in**: Prompt mode
+    ///
+    /// **Default Keybinding**: Any printable character (in Prompt mode)
+    ///
+    /// Inserts a character into the prompt's input buffer. Used for collecting
+    /// user input for commands, searches, file names, etc.
     PromptInsertChar(char),
 
     /// Delete a character from the prompt input
+    ///
+    /// **Available in**: Prompt mode
+    ///
+    /// **Default Keybinding**: `Backspace` (in Prompt mode)
+    ///
+    /// Deletes the last character from the prompt's input buffer, allowing the
+    /// user to correct mistakes while entering prompt input.
     PromptDeleteChar,
 
     /// Accept the prompt input (Enter key)
+    ///
+    /// **Available in**: Prompt mode
+    ///
+    /// **Default Keybinding**: `Enter` (in Prompt mode)
+    ///
+    /// Accepts the current prompt input and processes it. The exact behavior
+    /// depends on the prompt type (e.g., filename for save, search term for find).
     AcceptPrompt,
 
     /// Cancel the prompt (Esc key)
+    ///
+    /// **Available in**: Prompt mode
+    ///
+    /// **Default Keybinding**: `Esc` (in Prompt mode)
+    ///
+    /// Cancels the current prompt operation and returns to the previous editor
+    /// mode without processing the prompt input.
     CancelPrompt,
 }
 
@@ -191,6 +428,20 @@ impl FromStr for EditorCommand {
             "page.up" | "page_up" | "pageup" => Ok(EditorCommand::PageUp),
             "page.down" | "page_down" | "pagedown" => Ok(EditorCommand::PageDown),
             "insert_tab" | "tab" => Ok(EditorCommand::InsertTab),
+
+            // Selection commands (future features - placeholders)
+            "select.left" | "select_left" => Ok(EditorCommand::SelectLeft),
+            "select.right" | "select_right" => Ok(EditorCommand::SelectRight),
+            "select.up" | "select_up" => Ok(EditorCommand::SelectUp),
+            "select.down" | "select_down" => Ok(EditorCommand::SelectDown),
+            "select.line_start" | "select_line_start" => Ok(EditorCommand::SelectLineStart),
+            "select.line_end" | "select_line_end" => Ok(EditorCommand::SelectLineEnd),
+            "select.all" | "select_all" => Ok(EditorCommand::SelectAll),
+
+            // Clipboard commands (future features - placeholders)
+            "copy" => Ok(EditorCommand::Copy),
+            "cut" => Ok(EditorCommand::Cut),
+            "paste" => Ok(EditorCommand::Paste),
 
             // Mode switching commands
             "mode.insert" | "insert_mode" | "insert" => {

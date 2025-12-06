@@ -647,3 +647,291 @@ fn test_all_special_keys_recognized_in_appropriate_modes() {
         );
     }
 }
+
+// ============================================================================
+// Navigation Commands Coverage
+// ============================================================================
+
+#[test]
+fn test_delete_forward_in_insert_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::Delete, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Insert);
+
+    assert!(
+        matches!(result, MatchResult::Matched(EditorCommand::DeleteForward)),
+        "Delete key should trigger DeleteForward in Insert mode"
+    );
+}
+
+#[test]
+fn test_delete_forward_in_normal_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::Delete, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Normal);
+
+    assert!(
+        matches!(result, MatchResult::Matched(EditorCommand::DeleteForward)),
+        "Delete key should trigger DeleteForward in Normal mode"
+    );
+}
+
+#[test]
+fn test_delete_forward_not_active_in_prompt_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::Delete, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Prompt);
+
+    assert!(
+        !matches!(result, MatchResult::Matched(EditorCommand::DeleteForward)),
+        "Delete key should not trigger DeleteForward in Prompt mode"
+    );
+}
+
+#[test]
+fn test_home_moves_to_line_start_in_insert_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::Home, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Insert);
+
+    assert!(
+        matches!(result, MatchResult::Matched(EditorCommand::MoveToLineStart)),
+        "Home key should trigger MoveToLineStart in Insert mode"
+    );
+}
+
+#[test]
+fn test_home_moves_to_line_start_in_normal_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::Home, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Normal);
+
+    assert!(
+        matches!(result, MatchResult::Matched(EditorCommand::MoveToLineStart)),
+        "Home key should trigger MoveToLineStart in Normal mode"
+    );
+}
+
+#[test]
+fn test_home_not_active_in_prompt_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::Home, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Prompt);
+
+    assert!(
+        !matches!(result, MatchResult::Matched(EditorCommand::MoveToLineStart)),
+        "Home key should not trigger MoveToLineStart in Prompt mode"
+    );
+}
+
+#[test]
+fn test_end_moves_to_line_end_in_insert_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::End, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Insert);
+
+    assert!(
+        matches!(result, MatchResult::Matched(EditorCommand::MoveToLineEnd)),
+        "End key should trigger MoveToLineEnd in Insert mode"
+    );
+}
+
+#[test]
+fn test_end_moves_to_line_end_in_normal_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::End, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Normal);
+
+    assert!(
+        matches!(result, MatchResult::Matched(EditorCommand::MoveToLineEnd)),
+        "End key should trigger MoveToLineEnd in Normal mode"
+    );
+}
+
+#[test]
+fn test_end_not_active_in_prompt_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::End, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Prompt);
+
+    assert!(
+        !matches!(result, MatchResult::Matched(EditorCommand::MoveToLineEnd)),
+        "End key should not trigger MoveToLineEnd in Prompt mode"
+    );
+}
+
+#[test]
+fn test_pageup_in_insert_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::PageUp, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Insert);
+
+    assert!(
+        matches!(result, MatchResult::Matched(EditorCommand::PageUp)),
+        "PageUp key should trigger PageUp in Insert mode"
+    );
+}
+
+#[test]
+fn test_pageup_in_normal_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::PageUp, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Normal);
+
+    assert!(
+        matches!(result, MatchResult::Matched(EditorCommand::PageUp)),
+        "PageUp key should trigger PageUp in Normal mode"
+    );
+}
+
+#[test]
+fn test_pageup_not_active_in_prompt_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::PageUp, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Prompt);
+
+    assert!(
+        !matches!(result, MatchResult::Matched(EditorCommand::PageUp)),
+        "PageUp key should not trigger PageUp in Prompt mode"
+    );
+}
+
+#[test]
+fn test_pagedown_in_insert_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::PageDown, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Insert);
+
+    assert!(
+        matches!(result, MatchResult::Matched(EditorCommand::PageDown)),
+        "PageDown key should trigger PageDown in Insert mode"
+    );
+}
+
+#[test]
+fn test_pagedown_in_normal_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::PageDown, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Normal);
+
+    assert!(
+        matches!(result, MatchResult::Matched(EditorCommand::PageDown)),
+        "PageDown key should trigger PageDown in Normal mode"
+    );
+}
+
+#[test]
+fn test_pagedown_not_active_in_prompt_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::PageDown, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Prompt);
+
+    assert!(
+        !matches!(result, MatchResult::Matched(EditorCommand::PageDown)),
+        "PageDown key should not trigger PageDown in Prompt mode"
+    );
+}
+
+#[test]
+fn test_tab_inserts_tab_in_insert_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::Tab, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Insert);
+
+    assert!(
+        matches!(result, MatchResult::Matched(EditorCommand::InsertTab)),
+        "Tab key should trigger InsertTab in Insert mode"
+    );
+}
+
+#[test]
+fn test_tab_not_active_in_normal_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::Tab, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Normal);
+
+    assert!(
+        !matches!(result, MatchResult::Matched(EditorCommand::InsertTab)),
+        "Tab key should not trigger InsertTab in Normal mode (no vim-style indent)"
+    );
+}
+
+#[test]
+fn test_tab_not_active_in_prompt_mode() {
+    let mut handler = create_handler_with_defaults();
+
+    let event = key_event(KeyCode::Tab, KeyModifiers::NONE);
+    let result = handler.process_key_event(event, EditorMode::Prompt);
+
+    assert!(
+        !matches!(result, MatchResult::Matched(EditorCommand::InsertTab)),
+        "Tab key should not trigger InsertTab in Prompt mode"
+    );
+}
+
+#[test]
+fn test_navigation_keys_use_modes_context_for_reuse() {
+    use crate::input::bindings::navigation_commands;
+
+    let modes = vec![EditorMode::Insert, EditorMode::Normal];
+    let bindings = navigation_commands(modes.clone());
+
+    // Verify we have 5 navigation command bindings
+    assert_eq!(bindings.len(), 5, "navigation_commands should return 5 bindings");
+
+    for binding in bindings {
+        assert!(
+            matches!(
+                binding.context(),
+                crate::input::keybinding::BindingContext::Modes(ref m) if m == &modes
+            ),
+            "Navigation commands should use Modes context for reuse across multiple modes"
+        );
+    }
+}
+
+#[test]
+fn test_all_navigation_commands_have_correct_command_mapping() {
+    use crate::input::bindings::navigation_commands;
+
+    let bindings = navigation_commands(vec![EditorMode::Insert, EditorMode::Normal]);
+
+    let has_delete_forward = bindings
+        .iter()
+        .any(|b| matches!(b.command(), EditorCommand::DeleteForward));
+    let has_move_to_line_start = bindings
+        .iter()
+        .any(|b| matches!(b.command(), EditorCommand::MoveToLineStart));
+    let has_move_to_line_end = bindings
+        .iter()
+        .any(|b| matches!(b.command(), EditorCommand::MoveToLineEnd));
+    let has_page_up = bindings
+        .iter()
+        .any(|b| matches!(b.command(), EditorCommand::PageUp));
+    let has_page_down = bindings
+        .iter()
+        .any(|b| matches!(b.command(), EditorCommand::PageDown));
+
+    assert!(has_delete_forward, "navigation_commands should include DeleteForward");
+    assert!(has_move_to_line_start, "navigation_commands should include MoveToLineStart");
+    assert!(has_move_to_line_end, "navigation_commands should include MoveToLineEnd");
+    assert!(has_page_up, "navigation_commands should include PageUp");
+    assert!(has_page_down, "navigation_commands should include PageDown");
+}
