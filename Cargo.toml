@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "crates/termide-plugin-api"]
+
 [package]
 name = "termide"
 version = "0.1.0"

@@ -1,0 +1,18 @@
+[package]
+name = "termide-plugin-api"
+version = "0.1.0"
+edition = "2021"
+authors = ["TermIDE Contributors"]
+description = "Plugin API for TermIDE - terminal-based text editor"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/termide"
+keywords = ["plugin", "api", "editor", "terminal"]
+categories = ["api-bindings", "text-editors"]
+
+[dependencies]
+thiserror = "2.0"
+
+[dev-dependencies]
+
+[package.metadata.docs.rs]
+all-features = true
