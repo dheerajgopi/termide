@@ -63,6 +63,7 @@
 
 pub mod bindings;
 mod command;
+pub mod config;
 mod direction;
 pub mod input_handler;
 pub mod keybinding;

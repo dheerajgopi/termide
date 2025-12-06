@@ -5,6 +5,7 @@
 
 mod bindings;
 mod command;
+mod config;
 pub mod default_bindings_coverage;
 mod input_handler;
 mod keybinding;
