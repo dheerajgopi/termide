@@ -9,6 +9,10 @@ use tempfile::TempDir;
 use termide::buffer::Position;
 use termide::editor::{EditorMode, EditorState};
 use termide::file_io::{read_file, write_file};
+use termide::input::EditorCommand;
+use termide::input::input_handler::InputHandler;
+use termide::input::keybinding::{KeySequence, KeyBinding, BindingContext, Priority};
+use std::time::Duration;
 
 /// Test: Open existing file → verify content loaded correctly
 #[test]
@@ -338,4 +342,242 @@ fn test_dirty_flag_workflow() {
     // Edit again - dirty again
     state.handle_char_insert('Y', Position::new(0, 1));
     assert!(state.buffer().is_dirty());
+}
+
+// ============================================================================
+// Plugin Command Integration Tests
+// ============================================================================
+
+/// Test: Parse and register plugin command binding
+#[test]
+fn test_plugin_command_parsing() {
+    use std::str::FromStr;
+
+    // Parse valid plugin command
+    let cmd = EditorCommand::from_str("rust_analyzer.format").unwrap();
+    match cmd {
+        EditorCommand::PluginCommand {
+            plugin_name,
+            command_name,
+        } => {
+            assert_eq!(plugin_name, "rust_analyzer");
+            assert_eq!(command_name, "format");
+        }
+        _ => panic!("Expected PluginCommand variant"),
+    }
+
+    // Parse another plugin command
+    let cmd = EditorCommand::from_str("lsp.goto_definition").unwrap();
+    match cmd {
+        EditorCommand::PluginCommand {
+            plugin_name,
+            command_name,
+        } => {
+            assert_eq!(plugin_name, "lsp");
+            assert_eq!(command_name, "goto_definition");
+        }
+        _ => panic!("Expected PluginCommand variant"),
+    }
+}
+
+/// Test: Register plugin command binding and trigger it
+#[test]
+fn test_register_and_trigger_plugin_command() {
+    use std::str::FromStr;
+    use crossterm::event::{KeyCode, KeyModifiers, KeyEvent};
+
+    // Create input handler
+    let mut input_handler = InputHandler::with_timeout(Duration::from_millis(1000));
+
+    // Register a plugin command binding
+    let sequence = KeySequence::from_str("F5").unwrap();
+    let command = EditorCommand::from_str("rust_analyzer.format").unwrap();
+    let binding = KeyBinding::new(
+        sequence,
+        command.clone(),
+        BindingContext::Global,
+        Priority::Plugin,
+    );
+
+    input_handler
+        .registry_mut()
+        .register(binding)
+        .unwrap();
+
+    // Simulate the key event
+    let key_event = KeyEvent::new(
+        KeyCode::F(5),
+        KeyModifiers::NONE,
+    );
+
+    // Process the key event
+    let result = input_handler.process_key_event(key_event, EditorMode::Normal);
+
+    // Verify the command was matched
+    use termide::input::input_handler::MatchResult;
+    match result {
+        MatchResult::Matched(matched_cmd) => {
+            match matched_cmd {
+                EditorCommand::PluginCommand {
+                    plugin_name,
+                    command_name,
+                } => {
+                    assert_eq!(plugin_name, "rust_analyzer");
+                    assert_eq!(command_name, "format");
+                }
+                _ => panic!("Expected PluginCommand, got {:?}", matched_cmd),
+            }
+        }
+        _ => panic!("Expected Matched result, got {:?}", result),
+    }
+}
+
+/// Test: Plugin command with invalid format rejected
+#[test]
+fn test_plugin_command_invalid_format() {
+    use std::str::FromStr;
+
+    // Too many dots
+    let result = EditorCommand::from_str("too.many.dots");
+    assert!(result.is_err());
+
+    // Empty plugin name
+    let result = EditorCommand::from_str(".command");
+    assert!(result.is_err());
+
+    // Empty command name
+    let result = EditorCommand::from_str("plugin.");
+    assert!(result.is_err());
+
+    // Invalid characters in plugin name
+    let result = EditorCommand::from_str("plugin@name.cmd");
+    assert!(result.is_err());
+
+    // Invalid characters in command name (hyphen not allowed)
+    let result = EditorCommand::from_str("plugin.cmd-name");
+    assert!(result.is_err());
+}
+
+/// Test: Multiple plugin commands from different plugins
+#[test]
+fn test_multiple_plugin_commands() {
+    use std::str::FromStr;
+    use crossterm::event::{KeyCode, KeyModifiers, KeyEvent};
+
+    let mut input_handler = InputHandler::with_timeout(Duration::from_millis(1000));
+
+    // Register multiple plugin commands (use F-keys to avoid conflicts)
+    let bindings = vec![
+        ("F5", "rust_analyzer.format", "rust_analyzer", "format", 5),
+        ("F6", "lsp.goto_definition", "lsp", "goto_definition", 6),
+        ("F7", "my-plugin.refactor", "my-plugin", "refactor", 7),
+    ];
+
+    for (key_str, cmd_str, _expected_plugin, _expected_cmd, f_num) in &bindings {
+        let sequence = KeySequence::from_str(key_str).unwrap();
+        let command = EditorCommand::from_str(cmd_str).unwrap();
+        let binding = KeyBinding::new(
+            sequence,
+            command,
+            BindingContext::Global,
+            Priority::Plugin,
+        );
+        input_handler
+            .registry_mut()
+            .register(binding)
+            .unwrap();
+    }
+
+    // Test first binding
+    let key_event = KeyEvent::new(
+        KeyCode::F(5),
+        KeyModifiers::NONE,
+    );
+    let result = input_handler.process_key_event(key_event, EditorMode::Normal);
+    use termide::input::input_handler::MatchResult;
+    match result {
+        MatchResult::Matched(EditorCommand::PluginCommand {
+            plugin_name,
+            command_name,
+        }) => {
+            assert_eq!(plugin_name, "rust_analyzer");
+            assert_eq!(command_name, "format");
+        }
+        _ => panic!("Expected plugin command match"),
+    }
+
+    // Test second binding
+    let key_event = KeyEvent::new(
+        KeyCode::F(6),
+        KeyModifiers::NONE,
+    );
+    let result = input_handler.process_key_event(key_event, EditorMode::Normal);
+    match result {
+        MatchResult::Matched(EditorCommand::PluginCommand {
+            plugin_name,
+            command_name,
+        }) => {
+            assert_eq!(plugin_name, "lsp");
+            assert_eq!(command_name, "goto_definition");
+        }
+        _ => panic!("Expected plugin command match"),
+    }
+
+    // Test third binding
+    let key_event = KeyEvent::new(
+        KeyCode::F(7),
+        KeyModifiers::NONE,
+    );
+    let result = input_handler.process_key_event(key_event, EditorMode::Normal);
+    match result {
+        MatchResult::Matched(EditorCommand::PluginCommand {
+            plugin_name,
+            command_name,
+        }) => {
+            assert_eq!(plugin_name, "my-plugin");
+            assert_eq!(command_name, "refactor");
+        }
+        _ => panic!("Expected plugin command match"),
+    }
+}
+
+/// Test: Plugin commands work with mode-specific contexts
+#[test]
+fn test_plugin_command_mode_specific() {
+    use std::str::FromStr;
+    use crossterm::event::{KeyCode, KeyModifiers, KeyEvent};
+
+    let mut input_handler = InputHandler::with_timeout(Duration::from_millis(1000));
+
+    // Register plugin command only active in Normal mode
+    let sequence = KeySequence::from_str("F8").unwrap();
+    let command = EditorCommand::from_str("formatter.run").unwrap();
+    let binding = KeyBinding::new(
+        sequence,
+        command,
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Plugin,
+    );
+
+    input_handler
+        .registry_mut()
+        .register(binding)
+        .unwrap();
+
+    let key_event = KeyEvent::new(KeyCode::F(8), KeyModifiers::NONE);
+
+    // Should match in Normal mode
+    let result = input_handler.process_key_event(key_event, EditorMode::Normal);
+    use termide::input::input_handler::MatchResult;
+    match result {
+        MatchResult::Matched(EditorCommand::PluginCommand { .. }) => {}
+        _ => panic!("Expected match in Normal mode"),
+    }
+
+    // Should NOT match in Insert mode
+    let result = input_handler.process_key_event(key_event, EditorMode::Insert);
+    match result {
+        MatchResult::NoMatch => {}
+        _ => panic!("Expected NoMatch in Insert mode"),
+    }
 }

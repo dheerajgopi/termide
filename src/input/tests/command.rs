@@ -261,15 +261,28 @@ fn test_parse_unknown_command() {
 
 #[test]
 fn test_parse_typo_in_command() {
-    // Common typos
-    let typos = vec!["sav", "qit", "delet", "mov.up", "mode.insrt"];
+    // Common typos - some with dots (now parsed as plugin commands), some without
+    let typos_no_dot = vec!["sav", "qit", "delet"];
+    let typos_with_dot = vec!["mov.up", "mode.insrt"];
 
-    for typo in typos {
+    // Typos without dots should fail as UnknownCommand
+    for typo in typos_no_dot {
         let result = EditorCommand::from_str(typo);
         assert!(result.is_err(), "Expected error for typo: {}", typo);
         match result.unwrap_err() {
             CommandParseError::UnknownCommand(_) => {}
             _ => panic!("Expected UnknownCommand error for typo: {}", typo),
+        }
+    }
+
+    // Typos with dots are now parsed as plugin commands (unknown plugins)
+    for typo in typos_with_dot {
+        let result = EditorCommand::from_str(typo);
+        // These should now successfully parse as plugin commands
+        assert!(result.is_ok(), "Expected '{}' to parse as plugin command", typo);
+        match result.unwrap() {
+            EditorCommand::PluginCommand { .. } => {}
+            _ => panic!("Expected PluginCommand for typo with dot: {}", typo),
         }
     }
 }
@@ -282,22 +295,32 @@ fn test_parse_incomplete_command() {
         let result = EditorCommand::from_str(cmd);
         assert!(result.is_err(), "Expected error for incomplete: {}", cmd);
         match result.unwrap_err() {
-            CommandParseError::UnknownCommand(_) => {}
-            _ => panic!("Expected UnknownCommand error for incomplete: {}", cmd),
+            // These now look like plugin commands with empty command names
+            CommandParseError::InvalidPluginCommandFormat(_) => {}
+            _ => panic!("Expected InvalidPluginCommandFormat error for incomplete: {}", cmd),
         }
     }
 }
 
 #[test]
 fn test_parse_invalid_namespace() {
-    let invalid = vec!["invalid.save", "badns.quit", "wrongns.up"];
+    // These are now valid plugin commands - they're just unknown plugins
+    // This test now verifies they parse as plugin commands, not built-in commands
+    let plugin_commands = vec![
+        ("invalid.save", "invalid", "save"),
+        ("badns.quit", "badns", "quit"),
+        ("wrongns.up", "wrongns", "up"),
+    ];
 
-    for cmd in invalid {
-        let result = EditorCommand::from_str(cmd);
-        assert!(result.is_err(), "Expected error for invalid: {}", cmd);
-        match result.unwrap_err() {
-            CommandParseError::UnknownCommand(_) => {}
-            _ => panic!("Expected UnknownCommand error for invalid: {}", cmd),
+    for (cmd_str, expected_plugin, expected_cmd) in plugin_commands {
+        let result = EditorCommand::from_str(cmd_str);
+        assert!(result.is_ok(), "Command '{}' should parse as plugin command", cmd_str);
+        match result.unwrap() {
+            EditorCommand::PluginCommand { plugin_name, command_name } => {
+                assert_eq!(plugin_name, expected_plugin);
+                assert_eq!(command_name, expected_cmd);
+            }
+            _ => panic!("Expected PluginCommand for '{}'", cmd_str),
         }
     }
 }
@@ -574,4 +597,245 @@ fn test_parse_cut_command() {
 fn test_parse_paste_command() {
     let cmd = EditorCommand::from_str("paste").unwrap();
     assert_eq!(cmd, EditorCommand::Paste);
+}
+
+// ============================================================================
+// Plugin Command Parsing Tests
+// ============================================================================
+
+#[test]
+fn test_parse_valid_plugin_command() {
+    let cmd = EditorCommand::from_str("rust_analyzer.format").unwrap();
+    match cmd {
+        EditorCommand::PluginCommand {
+            plugin_name,
+            command_name,
+        } => {
+            assert_eq!(plugin_name, "rust_analyzer");
+            assert_eq!(command_name, "format");
+        }
+        _ => panic!("Expected PluginCommand variant"),
+    }
+}
+
+#[test]
+fn test_parse_plugin_command_with_hyphen() {
+    let cmd = EditorCommand::from_str("my-plugin.my_command").unwrap();
+    match cmd {
+        EditorCommand::PluginCommand {
+            plugin_name,
+            command_name,
+        } => {
+            assert_eq!(plugin_name, "my-plugin");
+            assert_eq!(command_name, "my_command");
+        }
+        _ => panic!("Expected PluginCommand variant"),
+    }
+}
+
+#[test]
+fn test_parse_plugin_command_with_numbers() {
+    let cmd = EditorCommand::from_str("plugin123.cmd456").unwrap();
+    match cmd {
+        EditorCommand::PluginCommand {
+            plugin_name,
+            command_name,
+        } => {
+            assert_eq!(plugin_name, "plugin123");
+            assert_eq!(command_name, "cmd456");
+        }
+        _ => panic!("Expected PluginCommand variant"),
+    }
+}
+
+#[test]
+fn test_parse_plugin_command_case_insensitive() {
+    let cmd = EditorCommand::from_str("MyPlugin.MyCommand").unwrap();
+    match cmd {
+        EditorCommand::PluginCommand {
+            plugin_name,
+            command_name,
+        } => {
+            // Case is preserved in plugin/command names after lowercasing
+            assert_eq!(plugin_name, "myplugin");
+            assert_eq!(command_name, "mycommand");
+        }
+        _ => panic!("Expected PluginCommand variant"),
+    }
+}
+
+#[test]
+fn test_parse_plugin_command_with_whitespace() {
+    let cmd = EditorCommand::from_str("  my_plugin.my_cmd  ").unwrap();
+    match cmd {
+        EditorCommand::PluginCommand {
+            plugin_name,
+            command_name,
+        } => {
+            assert_eq!(plugin_name, "my_plugin");
+            assert_eq!(command_name, "my_cmd");
+        }
+        _ => panic!("Expected PluginCommand variant"),
+    }
+}
+
+#[test]
+fn test_parse_plugin_command_no_dot() {
+    let result = EditorCommand::from_str("plugincommand");
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        CommandParseError::UnknownCommand(cmd) => {
+            assert_eq!(cmd, "plugincommand");
+        }
+        _ => panic!("Expected UnknownCommand error"),
+    }
+}
+
+#[test]
+fn test_parse_plugin_command_empty_plugin_name() {
+    let result = EditorCommand::from_str(".command");
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        CommandParseError::InvalidPluginCommandFormat(cmd) => {
+            assert_eq!(cmd, ".command");
+        }
+        _ => panic!("Expected InvalidPluginCommandFormat error"),
+    }
+}
+
+#[test]
+fn test_parse_plugin_command_empty_command_name() {
+    let result = EditorCommand::from_str("plugin.");
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        CommandParseError::InvalidPluginCommandFormat(cmd) => {
+            assert_eq!(cmd, "plugin.");
+        }
+        _ => panic!("Expected InvalidPluginCommandFormat error"),
+    }
+}
+
+#[test]
+fn test_parse_plugin_command_too_many_dots() {
+    let result = EditorCommand::from_str("too.many.dots");
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        CommandParseError::InvalidPluginCommandFormat(cmd) => {
+            assert_eq!(cmd, "too.many.dots");
+        }
+        _ => panic!("Expected InvalidPluginCommandFormat error"),
+    }
+}
+
+#[test]
+fn test_parse_plugin_command_empty_segment() {
+    let result = EditorCommand::from_str("plugin..command");
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        CommandParseError::InvalidPluginCommandFormat(cmd) => {
+            assert_eq!(cmd, "plugin..command");
+        }
+        _ => panic!("Expected InvalidPluginCommandFormat error"),
+    }
+}
+
+#[test]
+fn test_parse_plugin_command_invalid_chars_in_plugin_name() {
+    // Special characters not allowed in plugin names (except hyphen and underscore)
+    let invalid = vec!["plugin@name.cmd", "plugin name.cmd", "plugin$name.cmd"];
+
+    for cmd_str in invalid {
+        let result = EditorCommand::from_str(cmd_str);
+        assert!(
+            result.is_err(),
+            "Expected error for invalid plugin name: {}",
+            cmd_str
+        );
+        match result.unwrap_err() {
+            CommandParseError::InvalidPluginCommandFormat(_) => {}
+            _ => panic!(
+                "Expected InvalidPluginCommandFormat error for: {}",
+                cmd_str
+            ),
+        }
+    }
+}
+
+#[test]
+fn test_parse_plugin_command_invalid_chars_in_command_name() {
+    // Hyphens not allowed in command names (only underscore)
+    let invalid = vec!["plugin.cmd-name", "plugin.cmd name", "plugin.cmd$name"];
+
+    for cmd_str in invalid {
+        let result = EditorCommand::from_str(cmd_str);
+        assert!(
+            result.is_err(),
+            "Expected error for invalid command name: {}",
+            cmd_str
+        );
+        match result.unwrap_err() {
+            CommandParseError::InvalidPluginCommandFormat(_) => {}
+            _ => panic!(
+                "Expected InvalidPluginCommandFormat error for: {}",
+                cmd_str
+            ),
+        }
+    }
+}
+
+#[test]
+fn test_plugin_command_error_message() {
+    let err = EditorCommand::from_str("bad..format").unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("invalid plugin command format"));
+    assert!(msg.contains("bad..format"));
+    assert!(msg.contains("plugin_name.command_name"));
+}
+
+#[test]
+fn test_existing_dotted_commands_not_parsed_as_plugin() {
+    // These should still parse as their original commands, not plugin commands
+    let existing = vec![
+        ("file.save", EditorCommand::Save),
+        ("move.up", EditorCommand::MoveCursor(Direction::Up)),
+        ("mode.insert", EditorCommand::ChangeMode(EditorMode::Insert)),
+        ("prompt.accept", EditorCommand::AcceptPrompt),
+    ];
+
+    for (cmd_str, expected) in existing {
+        let cmd = EditorCommand::from_str(cmd_str).unwrap();
+        assert_eq!(
+            cmd, expected,
+            "Command '{}' should parse as built-in, not plugin command",
+            cmd_str
+        );
+    }
+}
+
+#[test]
+fn test_plugin_command_examples() {
+    // Test realistic plugin command examples
+    let examples = vec![
+        ("rust_analyzer.format", "rust_analyzer", "format"),
+        ("lsp.goto_definition", "lsp", "goto_definition"),
+        ("git-blame.show", "git-blame", "show"),
+        ("formatter.run", "formatter", "run"),
+    ];
+
+    for (cmd_str, expected_plugin, expected_cmd) in examples {
+        let cmd = EditorCommand::from_str(cmd_str).unwrap();
+        match cmd {
+            EditorCommand::PluginCommand {
+                plugin_name,
+                command_name,
+            } => {
+                assert_eq!(plugin_name, expected_plugin);
+                assert_eq!(command_name, expected_cmd);
+            }
+            _ => panic!(
+                "Expected PluginCommand for '{}', got {:?}",
+                cmd_str, cmd
+            ),
+        }
+    }
 }

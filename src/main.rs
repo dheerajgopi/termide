@@ -354,6 +354,18 @@ fn execute_command(
                 command
             ));
         }
+        // Plugin commands
+        EditorCommand::PluginCommand {
+            plugin_name,
+            command_name,
+        } => {
+            // Plugin system not yet initialized - provide helpful error message
+            state.set_status_message(format!(
+                "Plugin command '{}.{}' cannot be executed: plugin system not yet initialized. \
+                 Plugin support is planned for a future release.",
+                plugin_name, command_name
+            ));
+        }
     }
 
     Ok(())

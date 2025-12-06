@@ -320,6 +320,38 @@ pub enum EditorCommand {
     /// Cancels the current prompt operation and returns to the previous editor
     /// mode without processing the prompt input.
     CancelPrompt,
+
+    /// Execute a plugin command
+    ///
+    /// **Available in**: Mode-dependent (based on plugin binding context)
+    ///
+    /// **Format**: `plugin_name.command_name`
+    ///
+    /// Plugin commands are namespaced to prevent conflicts between plugins.
+    /// The plugin name and command name are separated by a dot (e.g., `rust_analyzer.format`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::input::EditorCommand;
+    /// use std::str::FromStr;
+    ///
+    /// // Parse plugin command
+    /// let cmd = EditorCommand::from_str("rust_analyzer.format").unwrap();
+    /// match cmd {
+    ///     EditorCommand::PluginCommand { plugin_name, command_name } => {
+    ///         assert_eq!(plugin_name, "rust_analyzer");
+    ///         assert_eq!(command_name, "format");
+    ///     }
+    ///     _ => panic!("Expected PluginCommand"),
+    /// }
+    /// ```
+    PluginCommand {
+        /// The name of the plugin that provides this command
+        plugin_name: String,
+        /// The command name within the plugin's namespace
+        command_name: String,
+    },
 }
 
 /// Error type for parsing editor commands from strings
@@ -343,6 +375,10 @@ pub enum CommandParseError {
         param: String,
         reason: String,
     },
+
+    /// Invalid plugin command format
+    #[error("invalid plugin command format '{0}': expected 'plugin_name.command_name' (e.g., 'rust_analyzer.format')")]
+    InvalidPluginCommandFormat(String),
 }
 
 impl FromStr for EditorCommand {
@@ -459,8 +495,76 @@ impl FromStr for EditorCommand {
             "prompt.cancel" | "cancel_prompt" | "cancel" => Ok(EditorCommand::CancelPrompt),
             "prompt.delete_char" | "prompt_delete" => Ok(EditorCommand::PromptDeleteChar),
 
-            // Unknown command
-            _ => Err(CommandParseError::UnknownCommand(trimmed)),
+            // Unknown command - try parsing as plugin command if it contains a dot
+            _ => {
+                // Check if this looks like a plugin command (contains exactly one dot)
+                if trimmed.contains('.') {
+                    parse_plugin_command(&trimmed)
+                } else {
+                    Err(CommandParseError::UnknownCommand(trimmed))
+                }
+            }
         }
     }
+}
+
+/// Parse a plugin command from a string
+///
+/// Plugin commands must follow the format: `plugin_name.command_name`
+///
+/// # Validation Rules
+///
+/// - Must contain exactly one dot separator
+/// - Plugin name must not be empty
+/// - Command name must not be empty
+/// - Plugin name can contain letters, numbers, underscores, and hyphens
+/// - Command name can contain letters, numbers, and underscores
+///
+/// # Examples
+///
+/// Valid:
+/// - `rust_analyzer.format`
+/// - `my-plugin.my_command`
+/// - `plugin123.cmd`
+///
+/// Invalid:
+/// - `plugin` (no dot)
+/// - `.command` (empty plugin name)
+/// - `plugin.` (empty command name)
+/// - `too.many.dots` (more than one dot)
+/// - `plugin..command` (empty segment)
+///
+/// # Errors
+///
+/// Returns `CommandParseError::InvalidPluginCommandFormat` if the format is invalid.
+fn parse_plugin_command(s: &str) -> Result<EditorCommand, CommandParseError> {
+    let parts: Vec<&str> = s.split('.').collect();
+
+    // Must have exactly 2 parts (plugin_name and command_name)
+    if parts.len() != 2 {
+        return Err(CommandParseError::InvalidPluginCommandFormat(s.to_string()));
+    }
+
+    let plugin_name = parts[0].trim();
+    let command_name = parts[1].trim();
+
+    // Both parts must be non-empty
+    if plugin_name.is_empty() || command_name.is_empty() {
+        return Err(CommandParseError::InvalidPluginCommandFormat(s.to_string()));
+    }
+
+    // Validate plugin name (alphanumeric, underscore, hyphen)
+    if !plugin_name.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+        return Err(CommandParseError::InvalidPluginCommandFormat(s.to_string()));
+    }
+
+    // Validate command name (alphanumeric, underscore)
+    if !command_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return Err(CommandParseError::InvalidPluginCommandFormat(s.to_string()));
+    }
+
+    Ok(EditorCommand::PluginCommand {
+        plugin_name: plugin_name.to_string(),
+        command_name: command_name.to_string(),
+    })
 }
