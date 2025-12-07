@@ -59,41 +59,16 @@ fn main() -> Result<()> {
 
     // Load user config if available (after defaults so User priority takes effect)
     let config_watcher = if let Some(config_path) = get_config_path() {
-        // Load initial config
-        match load_user_keybindings(&mut input_handler.registry_mut(), &config_path) {
-            Ok(count) if count > 0 => {
-                eprintln!("Loaded {} user keybinding(s) from {}", count, config_path.display());
-            }
-            Ok(_) => {
-                // Config file exists but is empty - silent
-            }
-            Err(e) => {
-                use std::io::ErrorKind;
-                // File not found is OK (silent), other errors get warnings
-                if let termide::input::config::ConfigError::ReadError { ref source, .. } = e {
-                    if source.kind() != ErrorKind::NotFound {
-                        eprintln!("Warning: {}", e);
-                    }
-                } else {
-                    // Parse errors and other issues - warn but continue
-                    eprintln!("Warning: {}", e);
-                }
-            }
-        }
+        // Load initial config - errors during startup are silent
+        // Users can check status bar during hot reload for warnings
+        let _ = load_user_keybindings(&mut input_handler.registry_mut(), &config_path);
 
         // Try to create config watcher for hot reload
         // Only attempt if config file exists
         if config_path.exists() {
             match ConfigWatcher::new(&config_path) {
-                Ok(watcher) => {
-                    eprintln!("✓ Config hot reload enabled");
-                    Some((watcher, config_path))
-                }
-                Err(e) => {
-                    eprintln!("⚠ Could not start config watcher: {}", e);
-                    eprintln!("  Hot reload disabled - restart editor to apply config changes");
-                    None
-                }
+                Ok(watcher) => Some((watcher, config_path)),
+                Err(_) => None, // Silent failure - hot reload just won't work
             }
         } else {
             // Config file doesn't exist yet - no watcher needed
@@ -167,16 +142,25 @@ fn run_event_loop(
             if watcher.check_for_changes() {
                 // Config file was modified - reload bindings
                 match reload_user_keybindings(input_handler.registry_mut(), config_path) {
-                    Ok((removed, loaded)) => {
-                        state.set_status_message(format!(
-                            "✓ Config reloaded: {} bindings",
-                            loaded
-                        ));
-                        eprintln!("Config reloaded: removed {}, loaded {} bindings", removed, loaded);
+                    Ok((_removed, result)) => {
+                        if result.warnings.is_empty() {
+                            state.set_status_message(format!(
+                                "✓ Config reloaded: {} bindings",
+                                result.loaded
+                            ));
+                        } else {
+                            // Show first warning in status bar
+                            let first_warning = result.warnings.first().unwrap();
+                            let warning_msg = if result.warnings.len() > 1 {
+                                format!("⚠ {} (+{} more)", first_warning, result.warnings.len() - 1)
+                            } else {
+                                format!("⚠ {}", first_warning)
+                            };
+                            state.set_status_message(warning_msg);
+                        }
                     }
                     Err(e) => {
                         state.set_status_message(format!("⚠ Config reload failed: {}", e));
-                        eprintln!("Warning: Config reload failed: {}", e);
                     }
                 }
             }

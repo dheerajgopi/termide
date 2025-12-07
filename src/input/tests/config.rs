@@ -54,7 +54,7 @@ fn test_load_empty_config() {
 
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 0);
+    assert_eq!(result.unwrap().loaded, 0);
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn test_load_valid_single_binding() {
 
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
     assert_eq!(registry.len(), 1);
 }
 
@@ -86,7 +86,7 @@ fn test_load_mode_specific_binding() {
 
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 }
 
 #[test]
@@ -110,7 +110,7 @@ fn test_load_multiple_bindings() {
 
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 3);
+    assert_eq!(result.unwrap().loaded, 3);
     assert_eq!(registry.len(), 3);
 }
 
@@ -127,7 +127,7 @@ fn test_load_multikey_sequence() {
 
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 }
 
 #[test]
@@ -165,7 +165,7 @@ fn test_load_invalid_sequence_continues() {
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
     // Only the valid binding should be loaded
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
     assert_eq!(registry.len(), 1);
 }
 
@@ -186,7 +186,7 @@ fn test_load_invalid_command_continues() {
 
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 }
 
 #[test]
@@ -206,7 +206,7 @@ fn test_load_invalid_mode_continues() {
 
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 }
 
 #[test]
@@ -266,7 +266,7 @@ fn test_mixed_valid_invalid_bindings() {
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
     // Should load 3 valid bindings (Ctrl+S, Ctrl+Q, Esc)
-    assert_eq!(result.unwrap(), 3);
+    assert_eq!(result.unwrap().loaded, 3);
     assert_eq!(registry.len(), 3);
 }
 
@@ -282,7 +282,7 @@ fn test_global_binding_no_mode() {
 
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 }
 
 #[test]
@@ -298,7 +298,7 @@ fn test_case_insensitive_mode() {
 
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 }
 
 #[test]
@@ -314,7 +314,7 @@ fn test_whitespace_in_mode() {
 
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 }
 
 #[test]
@@ -330,7 +330,7 @@ fn test_plugin_command() {
 
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 }
 
 #[test]
@@ -345,7 +345,7 @@ fn test_empty_sequence_error() {
 
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 0); // Invalid entry skipped
+    assert_eq!(result.unwrap().loaded, 0); // Invalid entry skipped
 }
 
 #[test]
@@ -360,7 +360,7 @@ fn test_empty_command_error() {
 
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 0); // Invalid entry skipped
+    assert_eq!(result.unwrap().loaded, 0); // Invalid entry skipped
 }
 
 #[test]
@@ -386,5 +386,5 @@ fn test_all_modes() {
 
     let result = load_user_keybindings(&mut registry, temp_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 3);
+    assert_eq!(result.unwrap().loaded, 3);
 }

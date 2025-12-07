@@ -39,7 +39,7 @@ fn test_user_binding_overrides_default() {
     // Load user config (Ctrl+s -> Quit)
     let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 
     // Process Ctrl+S key event
     let key_event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
@@ -72,7 +72,7 @@ fn test_user_binding_adds_new_binding() {
     // Load user config (Ctrl+K -> Quit)
     let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 
     // Process Ctrl+K key event
     let key_event = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL);
@@ -106,7 +106,7 @@ fn test_mode_specific_user_binding() {
     // Load user config
     let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 
     // Process 'x' in Normal mode - should match
     let key_event = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE);
@@ -156,7 +156,7 @@ fn test_multiple_user_bindings() {
     // Load user config - should load all 3 bindings
     let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 3);
+    assert_eq!(result.unwrap().loaded, 3);
 
     // Test Ctrl+S -> Quit
     let key_event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
@@ -204,7 +204,7 @@ fn test_plugin_command_in_config() {
     // Load user config
     let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 
     // Process Ctrl+F key event
     let key_event = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL);
@@ -255,7 +255,7 @@ fn test_mixed_valid_invalid_bindings() {
     // Load user config - should load 2 valid bindings, skip 2 invalid
     let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 2); // Only Ctrl+S and Ctrl+K load successfully
+    assert_eq!(result.unwrap().loaded, 2); // Only Ctrl+S and Ctrl+K load successfully
 }
 
 #[test]
@@ -277,7 +277,7 @@ fn test_global_binding_works_in_all_modes() {
     // Load user config
     let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 
     let key_event = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::CONTROL);
 
@@ -313,7 +313,7 @@ fn test_empty_config_file_no_errors() {
     // Load empty user config - should succeed with 0 bindings loaded
     let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 0);
+    assert_eq!(result.unwrap().loaded, 0);
 
     // Verify default bindings still work (Ctrl+S -> Save)
     let key_event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
@@ -348,7 +348,7 @@ fn test_config_with_invalid_sequence() {
     // Should load 1 valid binding, skip the invalid one
     let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 
     // Verify the valid binding works
     let key_event = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL);
@@ -381,7 +381,7 @@ fn test_config_with_invalid_command() {
     // Should load 1 valid binding, skip the invalid one
     let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 
     // Verify the valid binding works
     let key_event = KeyEvent::new(KeyCode::Char('y'), KeyModifiers::CONTROL);
@@ -416,7 +416,7 @@ fn test_config_with_invalid_mode() {
     // Should load 1 valid binding, skip the invalid one
     let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 
     // Verify the valid binding works
     let key_event = KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL);
@@ -474,7 +474,7 @@ fn test_user_binding_overrides_plugin_binding() {
     let config_file = create_temp_config(config_content);
     let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 
     // User binding should now override plugin binding
     let match_result = input_handler.process_key_event(key_event, EditorMode::Normal);
@@ -521,7 +521,7 @@ fn test_plugin_then_config_user_wins() {
     let config_file = create_temp_config(config_content);
     let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap().loaded, 1);
 
     // Process Ctrl+T in Normal mode
     let key_event = KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL);

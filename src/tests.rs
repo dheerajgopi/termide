@@ -107,7 +107,7 @@ mod config_integration {
 
         // Should succeed with 1 binding loaded (Ctrl+Q), 1 skipped (Ctr+S)
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 1);
+        assert_eq!(result.unwrap().loaded, 1);
     }
 
     #[test]
@@ -126,7 +126,7 @@ mod config_integration {
 
         // Should succeed with 0 bindings loaded
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 0);
+        assert_eq!(result.unwrap().loaded, 0);
     }
 
     #[test]
@@ -149,7 +149,7 @@ mod config_integration {
         // Load user config (Ctrl+S -> Quit)
         let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 1);
+        assert_eq!(result.unwrap().loaded, 1);
 
         // Verify that user binding takes precedence
         // (this is an integration test showing the priority system works)

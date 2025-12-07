@@ -28,7 +28,6 @@
 //! # Ok::<(), notify::Error>(())
 //! ```
 
-use notify::Watcher;
 use notify_debouncer_mini::new_debouncer;
 use std::path::Path;
 use std::sync::mpsc::{channel, Receiver};
@@ -224,8 +223,8 @@ impl ConfigWatcher {
     /// loop {
     ///     if watcher.check_for_changes() {
     ///         match reload_user_keybindings(&mut registry, &config_path) {
-    ///             Ok((removed, loaded)) => {
-    ///                 println!("✓ Config reloaded: {} bindings", loaded);
+    ///             Ok((removed, result)) => {
+    ///                 println!("✓ Config reloaded: {} bindings", result.loaded);
     ///             }
     ///             Err(e) => {
     ///                 eprintln!("⚠ Config reload failed: {}", e);
@@ -254,10 +253,10 @@ impl ConfigWatcher {
                     // We don't need to inspect the event details - any change triggers reload
                     has_changes = true;
                 }
-                Err(errors) => {
-                    // Log errors but don't crash the application
-                    // Watcher errors are not fatal - hot reload just won't work
-                    eprintln!("Config watcher error: {:?}", errors);
+                Err(_errors) => {
+                    // Ignore watcher errors silently
+                    // These are rare internal file system watcher errors
+                    // If they occur, hot reload simply won't trigger
                 }
             }
         }

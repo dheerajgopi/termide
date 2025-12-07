@@ -85,9 +85,9 @@ command = "file.quit"
     let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
 
     // Load initial config
-    let loaded = termide::input::config::load_user_keybindings(&mut registry, config_path)
+    let result = termide::input::config::load_user_keybindings(&mut registry, config_path)
         .expect("Failed to load initial config");
-    assert_eq!(loaded, 2, "Should load 2 bindings initially");
+    assert_eq!(result.loaded, 2, "Should load 2 bindings initially");
 
     // Modify config - remove one binding, add a new one
     let new_config = r#"
@@ -102,11 +102,11 @@ command = "file.new"
     update_config_file(config_path, new_config);
 
     // Reload config
-    let (removed, loaded) = reload_user_keybindings(&mut registry, config_path)
+    let (removed, result) = reload_user_keybindings(&mut registry, config_path)
         .expect("Failed to reload config");
 
     assert_eq!(removed, 2, "Should remove 2 old bindings");
-    assert_eq!(loaded, 2, "Should load 2 new bindings");
+    assert_eq!(result.loaded, 2, "Should load 2 new bindings");
 
     // Verify old Ctrl+q binding is gone
     registry.add_to_sequence(KeyPattern::new(KeyCode::Char('q'), KeyModifiers::CONTROL));
@@ -168,11 +168,11 @@ command = "file.save"
     let empty_config = "";
     update_config_file(config_path, empty_config);
 
-    let (removed, loaded) = reload_user_keybindings(&mut registry, config_path)
+    let (removed, result) = reload_user_keybindings(&mut registry, config_path)
         .expect("Failed to reload config");
 
     assert_eq!(removed, 1, "Should remove 1 user binding");
-    assert_eq!(loaded, 0, "Should load 0 new bindings");
+    assert_eq!(result.loaded, 0, "Should load 0 new bindings");
     assert_eq!(registry.len(), 2, "Should still have default + plugin bindings");
 
     // Verify default binding still works
@@ -229,8 +229,8 @@ sequence = "Ctrl+a"
 command = "file.select_all"
 "#;
     update_config_file(config_path, config1);
-    let (_, loaded) = reload_user_keybindings(&mut registry, config_path).unwrap();
-    assert_eq!(loaded, 1);
+    let (_, result) = reload_user_keybindings(&mut registry, config_path).unwrap();
+    assert_eq!(result.loaded, 1);
     assert_eq!(registry.len(), 1);
 
     // Second reload - add another binding
@@ -244,17 +244,17 @@ sequence = "Ctrl+b"
 command = "file.bold"
 "#;
     update_config_file(config_path, config2);
-    let (removed, loaded) = reload_user_keybindings(&mut registry, config_path).unwrap();
+    let (removed, result) = reload_user_keybindings(&mut registry, config_path).unwrap();
     assert_eq!(removed, 1);
-    assert_eq!(loaded, 2);
+    assert_eq!(result.loaded, 2);
     assert_eq!(registry.len(), 2);
 
     // Third reload - remove all bindings
     let config3 = "";
     update_config_file(config_path, config3);
-    let (removed, loaded) = reload_user_keybindings(&mut registry, config_path).unwrap();
+    let (removed, result) = reload_user_keybindings(&mut registry, config_path).unwrap();
     assert_eq!(removed, 2);
-    assert_eq!(loaded, 0);
+    assert_eq!(result.loaded, 0);
     assert_eq!(registry.len(), 0);
 }
 
@@ -300,11 +300,11 @@ command = "file.select_all"
 "#;
     update_config_file(config_path, new_config);
 
-    let (removed, loaded) = reload_user_keybindings(&mut registry, config_path)
+    let (removed, result) = reload_user_keybindings(&mut registry, config_path)
         .expect("Failed to reload");
 
     assert_eq!(removed, 3, "Should remove all old bindings");
-    assert_eq!(loaded, 2, "Should load 2 new bindings");
+    assert_eq!(result.loaded, 2, "Should load 2 new bindings");
     assert_eq!(registry.len(), 2);
 }
 
@@ -345,11 +345,11 @@ command = "file.new"
     // Check for changes
     if watcher.check_for_changes() {
         // Reload config
-        let (removed, loaded) = reload_user_keybindings(&mut registry, config_path)
+        let (removed, result) = reload_user_keybindings(&mut registry, config_path)
             .expect("Failed to reload config");
 
         assert_eq!(removed, 1, "Should remove 1 old binding");
-        assert_eq!(loaded, 2, "Should load 2 new bindings");
+        assert_eq!(result.loaded, 2, "Should load 2 new bindings");
         assert_eq!(registry.len(), 2);
     } else {
         panic!("Watcher should have detected changes");

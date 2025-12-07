@@ -38,7 +38,7 @@
 //! let config_path = Path::new("~/.config/termide/config.toml");
 //!
 //! match load_user_keybindings(&mut registry, config_path) {
-//!     Ok(count) => println!("Loaded {} user keybindings", count),
+//!     Ok(result) => println!("Loaded {} user keybindings", result.loaded),
 //!     Err(e) => eprintln!("Failed to load config: {}", e),
 //! }
 //! ```
@@ -52,6 +52,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use thiserror::Error;
+
+/// Result of loading keybindings with potential warnings
+#[derive(Debug)]
+pub struct LoadResult {
+    /// Number of bindings successfully loaded
+    pub loaded: usize,
+    /// Warning messages for bindings that couldn't be loaded
+    pub warnings: Vec<String>,
+}
 
 /// Error type for configuration loading
 #[derive(Debug, Error)]
@@ -204,7 +213,7 @@ pub struct UserBinding {
 /// let config_path = Path::new("~/.config/termide/config.toml");
 ///
 /// match load_user_keybindings(&mut registry, config_path) {
-///     Ok(count) => println!("Loaded {} user keybindings", count),
+///     Ok(result) => println!("Loaded {} user keybindings", result.loaded),
 ///     Err(e) => {
 ///         eprintln!("Failed to load config: {}", e);
 ///         // Continue with defaults
@@ -222,7 +231,7 @@ pub struct UserBinding {
 pub fn load_user_keybindings(
     registry: &mut KeyBindingRegistry,
     path: &Path,
-) -> Result<usize, ConfigError> {
+) -> Result<LoadResult, ConfigError> {
     // Read the file
     let contents = fs::read_to_string(path).map_err(|source| ConfigError::ReadError {
         path: path.display().to_string(),
@@ -236,8 +245,9 @@ pub fn load_user_keybindings(
             source,
         })?;
 
-    // Load each binding, collecting successes and logging failures
+    // Load each binding, collecting successes and warnings
     let mut loaded_count = 0;
+    let mut warnings = Vec::new();
 
     for (index, user_binding) in config.keybindings.iter().enumerate() {
         let binding_num = index + 1; // 1-indexed for user-friendly messages
@@ -250,25 +260,22 @@ pub fn load_user_keybindings(
                         loaded_count += 1;
                     }
                     Err(e) => {
-                        // Log warning but continue with other bindings
-                        eprintln!(
-                            "Warning: {}",
-                            ConfigError::BindingConflict {
-                                index: binding_num,
-                                source: e
-                            }
-                        );
+                        // Collect warning but continue with other bindings
+                        warnings.push(format!("keybinding #{}: conflict - {}", binding_num, e));
                     }
                 }
             }
             Err(e) => {
-                // Log warning but continue with other bindings
-                eprintln!("Warning: {}", e);
+                // Collect warning but continue with other bindings
+                warnings.push(format!("{}", e));
             }
         }
     }
 
-    Ok(loaded_count)
+    Ok(LoadResult {
+        loaded: loaded_count,
+        warnings,
+    })
 }
 
 /// Load and validate a single user binding
@@ -404,8 +411,8 @@ fn format_command_error(error: &CommandParseError) -> String {
 /// let config_path = Path::new("~/.config/termide/config.toml");
 ///
 /// match reload_user_keybindings(&mut registry, config_path) {
-///     Ok((removed, loaded)) => {
-///         println!("Config reloaded: removed {}, loaded {}", removed, loaded);
+///     Ok((removed, result)) => {
+///         println!("Config reloaded: removed {}, loaded {}", removed, result.loaded);
 ///     }
 ///     Err(e) => {
 ///         eprintln!("Failed to reload config: {}", e);
@@ -426,9 +433,9 @@ fn format_command_error(error: &CommandParseError) -> String {
 /// # let config_path = Path::new("config.toml");
 /// // File watcher detects config.toml was modified
 /// match reload_user_keybindings(&mut registry, config_path) {
-///     Ok((removed, loaded)) => {
+///     Ok((removed, result)) => {
 ///         // Show user feedback
-///         println!("✓ Config reloaded: {} bindings", loaded);
+///         println!("✓ Config reloaded: {} bindings", result.loaded);
 ///     }
 ///     Err(e) => {
 ///         // Config has errors, but old bindings are cleared
@@ -440,14 +447,14 @@ fn format_command_error(error: &CommandParseError) -> String {
 pub fn reload_user_keybindings(
     registry: &mut KeyBindingRegistry,
     path: &Path,
-) -> Result<(usize, usize), ConfigError> {
+) -> Result<(usize, LoadResult), ConfigError> {
     // Step 1: Clear all existing user bindings
     let removed = registry.unregister_by_priority(Priority::User);
 
     // Step 2: Load fresh bindings from config
-    let loaded = load_user_keybindings(registry, path)?;
+    let result = load_user_keybindings(registry, path)?;
 
-    Ok((removed, loaded))
+    Ok((removed, result))
 }
 
 /// Get the platform-specific path to the user's keybinding configuration file
