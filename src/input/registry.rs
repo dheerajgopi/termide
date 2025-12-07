@@ -310,6 +310,67 @@ impl KeyBindingRegistry {
         });
     }
 
+    /// Unregisters all keybindings with the specified priority
+    ///
+    /// This is useful for removing an entire class of bindings, such as all User
+    /// bindings when reloading configuration. Bindings with other priorities are
+    /// preserved.
+    ///
+    /// # Arguments
+    ///
+    /// * `priority` - The priority level to remove
+    ///
+    /// # Returns
+    ///
+    /// The number of bindings that were removed
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::input::registry::KeyBindingRegistry;
+    /// use termide::input::keybinding::{KeyPattern, KeySequence, KeyBinding, BindingContext, Priority};
+    /// use termide::input::EditorCommand;
+    /// use termide::editor::EditorMode;
+    /// use crossterm::event::{KeyCode, KeyModifiers};
+    /// use std::time::Duration;
+    ///
+    /// let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+    ///
+    /// // Register some default bindings
+    /// let default_binding = KeyBinding::new(
+    ///     KeySequence::new(vec![
+    ///         KeyPattern::new(KeyCode::Char('i'), KeyModifiers::NONE),
+    ///     ]).expect("i is valid"),
+    ///     EditorCommand::ChangeMode(EditorMode::Insert),
+    ///     BindingContext::Mode(EditorMode::Normal),
+    ///     Priority::Default,
+    /// );
+    /// registry.register(default_binding).unwrap();
+    ///
+    /// // Register some user bindings
+    /// let user_binding = KeyBinding::new(
+    ///     KeySequence::new(vec![
+    ///         KeyPattern::new(KeyCode::Char('s'), KeyModifiers::CONTROL),
+    ///     ]).expect("Ctrl+s is valid"),
+    ///     EditorCommand::Save,
+    ///     BindingContext::Global,
+    ///     Priority::User,
+    /// );
+    /// registry.register(user_binding).unwrap();
+    ///
+    /// assert_eq!(registry.len(), 2);
+    ///
+    /// // Remove all user bindings (for config reload)
+    /// let removed = registry.unregister_by_priority(Priority::User);
+    /// assert_eq!(removed, 1);
+    /// assert_eq!(registry.len(), 1); // Default binding remains
+    /// ```
+    pub fn unregister_by_priority(&mut self, priority: Priority) -> usize {
+        let original_len = self.bindings.len();
+        self.bindings.retain(|binding| binding.priority() != priority);
+        original_len - self.bindings.len()
+    }
+
     /// Returns the number of registered bindings
     ///
     /// # Examples

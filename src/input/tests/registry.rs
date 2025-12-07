@@ -902,8 +902,282 @@ fn test_user_priority_overrides_default_priority() {
     
     // Add Ctrl+S to sequence buffer
     registry.add_to_sequence(KeyPattern::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
-    
+
     // Find match - should return User priority binding (Quit)
     let cmd = registry.find_match(EditorMode::Normal).expect("Should find match");
     assert_eq!(cmd, &EditorCommand::Quit, "User priority should override Default");
+}
+
+// ==================== Tests for unregister_by_priority ====================
+
+#[test]
+fn test_unregister_by_priority_removes_only_target_priority() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register bindings at different priorities
+    let default_binding = create_binding(
+        'i',
+        KeyModifiers::NONE,
+        EditorCommand::ChangeMode(EditorMode::Insert),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+
+    let plugin_binding = create_binding(
+        'j',
+        KeyModifiers::NONE,
+        EditorCommand::MoveCursor(crate::input::Direction::Down),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Plugin,
+    );
+
+    let user_binding = create_binding(
+        'k',
+        KeyModifiers::NONE,
+        EditorCommand::MoveCursor(crate::input::Direction::Up),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::User,
+    );
+
+    registry.register(default_binding).unwrap();
+    registry.register(plugin_binding).unwrap();
+    registry.register(user_binding).unwrap();
+
+    assert_eq!(registry.len(), 3);
+
+    // Remove only User priority bindings
+    let removed = registry.unregister_by_priority(Priority::User);
+    assert_eq!(removed, 1);
+    assert_eq!(registry.len(), 2);
+
+    // Verify User binding is gone but others remain
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('k'), KeyModifiers::NONE));
+    assert!(registry.find_match(EditorMode::Normal).is_none(), "User binding should be removed");
+
+    registry.clear_sequence();
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('j'), KeyModifiers::NONE));
+    assert!(registry.find_match(EditorMode::Normal).is_some(), "Plugin binding should remain");
+
+    registry.clear_sequence();
+    registry.add_to_sequence(KeyPattern::new(KeyCode::Char('i'), KeyModifiers::NONE));
+    assert!(registry.find_match(EditorMode::Normal).is_some(), "Default binding should remain");
+}
+
+#[test]
+fn test_unregister_by_priority_multiple_bindings() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register multiple User priority bindings
+    let user_binding1 = create_binding(
+        'a',
+        KeyModifiers::NONE,
+        EditorCommand::MoveCursor(crate::input::Direction::Left),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::User,
+    );
+
+    let user_binding2 = create_binding(
+        'b',
+        KeyModifiers::NONE,
+        EditorCommand::MoveCursor(crate::input::Direction::Right),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::User,
+    );
+
+    let user_binding3 = create_binding(
+        'c',
+        KeyModifiers::NONE,
+        EditorCommand::MoveCursor(crate::input::Direction::Up),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::User,
+    );
+
+    let default_binding = create_binding(
+        'd',
+        KeyModifiers::NONE,
+        EditorCommand::MoveCursor(crate::input::Direction::Down),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+
+    registry.register(user_binding1).unwrap();
+    registry.register(user_binding2).unwrap();
+    registry.register(user_binding3).unwrap();
+    registry.register(default_binding).unwrap();
+
+    assert_eq!(registry.len(), 4);
+
+    // Remove all User priority bindings
+    let removed = registry.unregister_by_priority(Priority::User);
+    assert_eq!(removed, 3);
+    assert_eq!(registry.len(), 1);
+}
+
+#[test]
+fn test_unregister_by_priority_empty_registry() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Unregistering from empty registry should return 0
+    let removed = registry.unregister_by_priority(Priority::User);
+    assert_eq!(removed, 0);
+    assert_eq!(registry.len(), 0);
+}
+
+#[test]
+fn test_unregister_by_priority_no_matching_priority() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register only Default bindings
+    let default_binding = create_binding(
+        'i',
+        KeyModifiers::NONE,
+        EditorCommand::ChangeMode(EditorMode::Insert),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+
+    registry.register(default_binding).unwrap();
+    assert_eq!(registry.len(), 1);
+
+    // Try to remove User priority - should remove nothing
+    let removed = registry.unregister_by_priority(Priority::User);
+    assert_eq!(removed, 0);
+    assert_eq!(registry.len(), 1);
+}
+
+#[test]
+fn test_unregister_by_priority_preserves_priority_ordering() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register bindings in mixed order
+    let default_binding = create_binding(
+        'a',
+        KeyModifiers::NONE,
+        EditorCommand::MoveCursor(crate::input::Direction::Left),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Default,
+    );
+
+    let user_binding = create_binding(
+        'b',
+        KeyModifiers::NONE,
+        EditorCommand::MoveCursor(crate::input::Direction::Right),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::User,
+    );
+
+    let plugin_binding = create_binding(
+        'c',
+        KeyModifiers::NONE,
+        EditorCommand::MoveCursor(crate::input::Direction::Up),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::Plugin,
+    );
+
+    registry.register(default_binding).unwrap();
+    registry.register(user_binding).unwrap();
+    registry.register(plugin_binding).unwrap();
+
+    // Remove User priority
+    registry.unregister_by_priority(Priority::User);
+
+    // Register another User binding - it should be inserted in correct priority position
+    let new_user_binding = create_binding(
+        'd',
+        KeyModifiers::NONE,
+        EditorCommand::MoveCursor(crate::input::Direction::Down),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::User,
+    );
+
+    registry.register(new_user_binding).unwrap();
+    assert_eq!(registry.len(), 3);
+}
+
+#[test]
+fn test_unregister_by_priority_with_different_contexts() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register User bindings in different contexts
+    let user_binding_normal = create_binding(
+        'i',
+        KeyModifiers::NONE,
+        EditorCommand::ChangeMode(EditorMode::Insert),
+        BindingContext::Mode(EditorMode::Normal),
+        Priority::User,
+    );
+
+    let user_binding_insert = create_binding(
+        'a',
+        KeyModifiers::CONTROL,
+        EditorCommand::MoveToLineStart,
+        BindingContext::Mode(EditorMode::Insert),
+        Priority::User,
+    );
+
+    let user_binding_global = create_binding(
+        's',
+        KeyModifiers::CONTROL,
+        EditorCommand::Save,
+        BindingContext::Global,
+        Priority::User,
+    );
+
+    registry.register(user_binding_normal).unwrap();
+    registry.register(user_binding_insert).unwrap();
+    registry.register(user_binding_global).unwrap();
+
+    assert_eq!(registry.len(), 3);
+
+    // Remove all User bindings regardless of context
+    let removed = registry.unregister_by_priority(Priority::User);
+    assert_eq!(removed, 3);
+    assert_eq!(registry.len(), 0);
+}
+
+#[test]
+fn test_unregister_by_priority_all_priorities() {
+    let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+
+    // Register bindings at all priority levels
+    let default_binding = create_binding(
+        'a',
+        KeyModifiers::NONE,
+        EditorCommand::MoveCursor(crate::input::Direction::Left),
+        BindingContext::Global,
+        Priority::Default,
+    );
+
+    let plugin_binding = create_binding(
+        'b',
+        KeyModifiers::NONE,
+        EditorCommand::MoveCursor(crate::input::Direction::Right),
+        BindingContext::Global,
+        Priority::Plugin,
+    );
+
+    let user_binding = create_binding(
+        'c',
+        KeyModifiers::NONE,
+        EditorCommand::MoveCursor(crate::input::Direction::Up),
+        BindingContext::Global,
+        Priority::User,
+    );
+
+    registry.register(default_binding).unwrap();
+    registry.register(plugin_binding).unwrap();
+    registry.register(user_binding).unwrap();
+
+    // Remove each priority level one by one
+    let removed_default = registry.unregister_by_priority(Priority::Default);
+    assert_eq!(removed_default, 1);
+    assert_eq!(registry.len(), 2);
+
+    let removed_plugin = registry.unregister_by_priority(Priority::Plugin);
+    assert_eq!(removed_plugin, 1);
+    assert_eq!(registry.len(), 1);
+
+    let removed_user = registry.unregister_by_priority(Priority::User);
+    assert_eq!(removed_user, 1);
+    assert_eq!(registry.len(), 0);
 }

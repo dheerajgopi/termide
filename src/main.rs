@@ -18,8 +18,9 @@ use termide::buffer::Position;
 use termide::editor::{EditorMode, EditorState};
 use termide::input::{Direction, EditorCommand};
 use termide::input::bindings::register_default_bindings;
-use termide::input::config::{get_config_path, load_user_keybindings};
+use termide::input::config::{get_config_path, load_user_keybindings, reload_user_keybindings};
 use termide::input::input_handler::{InputHandler, MatchResult};
+use termide::input::watcher::ConfigWatcher;
 use termide::ui::Renderer;
 
 mod buffer;
@@ -57,7 +58,8 @@ fn main() -> Result<()> {
         .context("Failed to register default keybindings")?;
 
     // Load user config if available (after defaults so User priority takes effect)
-    if let Some(config_path) = get_config_path() {
+    let config_watcher = if let Some(config_path) = get_config_path() {
+        // Load initial config
         match load_user_keybindings(&mut input_handler.registry_mut(), &config_path) {
             Ok(count) if count > 0 => {
                 eprintln!("Loaded {} user keybinding(s) from {}", count, config_path.display());
@@ -78,13 +80,34 @@ fn main() -> Result<()> {
                 }
             }
         }
-    }
+
+        // Try to create config watcher for hot reload
+        // Only attempt if config file exists
+        if config_path.exists() {
+            match ConfigWatcher::new(&config_path) {
+                Ok(watcher) => {
+                    eprintln!("✓ Config hot reload enabled");
+                    Some((watcher, config_path))
+                }
+                Err(e) => {
+                    eprintln!("⚠ Could not start config watcher: {}", e);
+                    eprintln!("  Hot reload disabled - restart editor to apply config changes");
+                    None
+                }
+            }
+        } else {
+            // Config file doesn't exist yet - no watcher needed
+            None
+        }
+    } else {
+        None
+    };
 
     // Initialize cursor position
     let mut cursor = Position::origin();
 
     // Main event loop
-    let result = run_event_loop(&mut state, &mut renderer, &mut cursor, &mut input_handler);
+    let result = run_event_loop(&mut state, &mut renderer, &mut cursor, &mut input_handler, config_watcher);
 
     // Clean up terminal
     disable_raw_mode().context("Failed to disable raw terminal mode")?;
@@ -128,6 +151,7 @@ fn run_event_loop(
     renderer: &mut Renderer,
     cursor: &mut Position,
     input_handler: &mut InputHandler,
+    mut config_watcher: Option<(ConfigWatcher, std::path::PathBuf)>,
 ) -> Result<()> {
     loop {
         // Render current state
@@ -136,6 +160,26 @@ fn run_event_loop(
         // Check if we should quit
         if state.should_quit() {
             break;
+        }
+
+        // Check for config file changes (hot reload)
+        if let Some((ref mut watcher, ref config_path)) = config_watcher {
+            if watcher.check_for_changes() {
+                // Config file was modified - reload bindings
+                match reload_user_keybindings(input_handler.registry_mut(), config_path) {
+                    Ok((removed, loaded)) => {
+                        state.set_status_message(format!(
+                            "✓ Config reloaded: {} bindings",
+                            loaded
+                        ));
+                        eprintln!("Config reloaded: removed {}, loaded {} bindings", removed, loaded);
+                    }
+                    Err(e) => {
+                        state.set_status_message(format!("⚠ Config reload failed: {}", e));
+                        eprintln!("Warning: Config reload failed: {}", e);
+                    }
+                }
+            }
         }
 
         // Check for sequence buffer timeout

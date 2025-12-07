@@ -372,6 +372,84 @@ fn format_command_error(error: &CommandParseError) -> String {
     }
 }
 
+/// Reload user keybindings from the configuration file
+///
+/// This function is designed for hot-reloading configuration at runtime. It:
+/// 1. Unregisters all existing User priority bindings
+/// 2. Loads fresh bindings from the config file
+/// 3. Returns the count of newly loaded bindings
+///
+/// If the config file has errors, old bindings are cleared but new ones may
+/// partially load (graceful degradation).
+///
+/// # Arguments
+///
+/// * `registry` - The keybinding registry to reload bindings into
+/// * `path` - Path to the TOML configuration file
+///
+/// # Returns
+///
+/// - `Ok((removed, loaded))` - Counts of removed and newly loaded bindings
+/// - `Err(ConfigError)` - Fatal error (file not readable, invalid TOML)
+///
+/// # Examples
+///
+/// ```no_run
+/// use termide::input::config::reload_user_keybindings;
+/// use termide::input::registry::KeyBindingRegistry;
+/// use std::path::Path;
+/// use std::time::Duration;
+///
+/// let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+/// let config_path = Path::new("~/.config/termide/config.toml");
+///
+/// match reload_user_keybindings(&mut registry, config_path) {
+///     Ok((removed, loaded)) => {
+///         println!("Config reloaded: removed {}, loaded {}", removed, loaded);
+///     }
+///     Err(e) => {
+///         eprintln!("Failed to reload config: {}", e);
+///     }
+/// }
+/// ```
+///
+/// # Hot Reload Workflow
+///
+/// This function is typically called when the config file changes:
+///
+/// ```no_run
+/// # use termide::input::config::reload_user_keybindings;
+/// # use termide::input::registry::KeyBindingRegistry;
+/// # use std::path::Path;
+/// # use std::time::Duration;
+/// # let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+/// # let config_path = Path::new("config.toml");
+/// // File watcher detects config.toml was modified
+/// match reload_user_keybindings(&mut registry, config_path) {
+///     Ok((removed, loaded)) => {
+///         // Show user feedback
+///         println!("✓ Config reloaded: {} bindings", loaded);
+///     }
+///     Err(e) => {
+///         // Config has errors, but old bindings are cleared
+///         eprintln!("⚠ Config reload failed: {}", e);
+///         eprintln!("  Old bindings cleared, fix config to restore.");
+///     }
+/// }
+/// ```
+pub fn reload_user_keybindings(
+    registry: &mut KeyBindingRegistry,
+    path: &Path,
+) -> Result<(usize, usize), ConfigError> {
+    // Step 1: Clear all existing user bindings
+    let removed = registry.unregister_by_priority(Priority::User);
+
+    // Step 2: Load fresh bindings from config
+    let loaded = load_user_keybindings(registry, path)?;
+
+    Ok((removed, loaded))
+}
+
 /// Get the platform-specific path to the user's keybinding configuration file
 ///
 /// This function returns the standard configuration file path for the current platform:

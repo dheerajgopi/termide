@@ -68,6 +68,7 @@ mod direction;
 pub mod input_handler;
 pub mod keybinding;
 pub mod registry;
+pub mod watcher;
 
 pub use command::{EditorCommand, CommandParseError};
 pub use direction::Direction;
