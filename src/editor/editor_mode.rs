@@ -1,5 +1,27 @@
 //! Editor mode enumeration
 
+use std::fmt;
+use std::str::FromStr;
+
+/// Error returned when parsing an invalid mode string
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseModeError {
+    /// The invalid mode string that was provided
+    pub invalid: String,
+}
+
+impl fmt::Display for ParseModeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "unknown mode '{}'. Valid modes are: 'insert', 'normal', 'prompt'",
+            self.invalid
+        )
+    }
+}
+
+impl std::error::Error for ParseModeError {}
+
 /// Represents the current editing mode of the editor
 ///
 /// The editor supports three modes:
@@ -56,5 +78,44 @@ impl Default for EditorMode {
     /// Default mode is Insert
     fn default() -> Self {
         EditorMode::Insert
+    }
+}
+
+impl FromStr for EditorMode {
+    type Err = ParseModeError;
+
+    /// Parse a mode string (case-insensitive with whitespace trimming)
+    ///
+    /// # Valid mode names
+    ///
+    /// - `"insert"` → `EditorMode::Insert`
+    /// - `"normal"` → `EditorMode::Normal`
+    /// - `"prompt"` → `EditorMode::Prompt`
+    ///
+    /// Parsing is case-insensitive and leading/trailing whitespace is trimmed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::editor::EditorMode;
+    /// use std::str::FromStr;
+    ///
+    /// assert_eq!(EditorMode::from_str("insert").unwrap(), EditorMode::Insert);
+    /// assert_eq!(EditorMode::from_str("NORMAL").unwrap(), EditorMode::Normal);
+    /// assert_eq!(EditorMode::from_str("  prompt  ").unwrap(), EditorMode::Prompt);
+    ///
+    /// // Invalid mode names return an error
+    /// assert!(EditorMode::from_str("invalid").is_err());
+    /// assert!(EditorMode::from_str("").is_err());
+    /// ```
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "insert" => Ok(EditorMode::Insert),
+            "normal" => Ok(EditorMode::Normal),
+            "prompt" => Ok(EditorMode::Prompt),
+            _ => Err(ParseModeError {
+                invalid: s.to_string(),
+            }),
+        }
     }
 }

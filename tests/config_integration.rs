@@ -295,3 +295,303 @@ fn test_global_binding_works_in_all_modes() {
         _ => panic!("Expected Quit in Insert mode"),
     }
 }
+
+#[test]
+fn test_empty_config_file_no_errors() {
+    // Empty config file should not cause errors, defaults should still work
+    let config_content = r#"
+        # Empty configuration - just comments
+        keybindings = []
+    "#;
+
+    let config_file = create_temp_config(config_content);
+    let mut input_handler = InputHandler::with_timeout(Duration::from_millis(1000));
+
+    // Register defaults
+    register_default_bindings(&mut input_handler.registry_mut()).unwrap();
+
+    // Load empty user config - should succeed with 0 bindings loaded
+    let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), 0);
+
+    // Verify default bindings still work (Ctrl+S -> Save)
+    let key_event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+    let match_result = input_handler.process_key_event(key_event, EditorMode::Normal);
+
+    match match_result {
+        MatchResult::Matched(cmd) => {
+            assert_eq!(cmd, EditorCommand::Save);
+        }
+        _ => panic!("Default binding should still work with empty config"),
+    }
+}
+
+#[test]
+fn test_config_with_invalid_sequence() {
+    // Config with invalid sequence should continue loading other bindings
+    let config_content = r#"
+        [[keybindings]]
+        sequence = "Ctrl+"  # Invalid: incomplete modifier
+        command = "quit"
+
+        [[keybindings]]
+        sequence = "Ctrl+k"
+        command = "file.save"
+    "#;
+
+    let config_file = create_temp_config(config_content);
+    let mut input_handler = InputHandler::with_timeout(Duration::from_millis(1000));
+
+    register_default_bindings(&mut input_handler.registry_mut()).unwrap();
+
+    // Should load 1 valid binding, skip the invalid one
+    let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), 1);
+
+    // Verify the valid binding works
+    let key_event = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL);
+    let match_result = input_handler.process_key_event(key_event, EditorMode::Normal);
+
+    match match_result {
+        MatchResult::Matched(cmd) => assert_eq!(cmd, EditorCommand::Save),
+        _ => panic!("Valid binding should work"),
+    }
+}
+
+#[test]
+fn test_config_with_invalid_command() {
+    // Config with invalid command should continue loading other bindings
+    let config_content = r#"
+        [[keybindings]]
+        sequence = "Ctrl+x"
+        command = "nonexistent_command"  # Invalid command
+
+        [[keybindings]]
+        sequence = "Ctrl+y"
+        command = "quit"
+    "#;
+
+    let config_file = create_temp_config(config_content);
+    let mut input_handler = InputHandler::with_timeout(Duration::from_millis(1000));
+
+    register_default_bindings(&mut input_handler.registry_mut()).unwrap();
+
+    // Should load 1 valid binding, skip the invalid one
+    let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), 1);
+
+    // Verify the valid binding works
+    let key_event = KeyEvent::new(KeyCode::Char('y'), KeyModifiers::CONTROL);
+    let match_result = input_handler.process_key_event(key_event, EditorMode::Normal);
+
+    match match_result {
+        MatchResult::Matched(cmd) => assert_eq!(cmd, EditorCommand::Quit),
+        _ => panic!("Valid binding should work"),
+    }
+}
+
+#[test]
+fn test_config_with_invalid_mode() {
+    // Config with invalid mode should continue loading other bindings
+    let config_content = r#"
+        [[keybindings]]
+        sequence = "Ctrl+m"
+        command = "quit"
+        mode = "invalid_mode"  # Invalid mode
+
+        [[keybindings]]
+        sequence = "Ctrl+n"
+        command = "file.save"
+        mode = "normal"
+    "#;
+
+    let config_file = create_temp_config(config_content);
+    let mut input_handler = InputHandler::with_timeout(Duration::from_millis(1000));
+
+    register_default_bindings(&mut input_handler.registry_mut()).unwrap();
+
+    // Should load 1 valid binding, skip the invalid one
+    let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), 1);
+
+    // Verify the valid binding works
+    let key_event = KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL);
+    let match_result = input_handler.process_key_event(key_event, EditorMode::Normal);
+
+    match match_result {
+        MatchResult::Matched(cmd) => assert_eq!(cmd, EditorCommand::Save),
+        _ => panic!("Valid binding should work"),
+    }
+}
+
+#[test]
+fn test_user_binding_overrides_plugin_binding() {
+    use termide_plugin_api::input::{PluginBindingBuilder, PluginInputExtension};
+
+    // Test priority system: User > Plugin > Default
+    let mut input_handler = InputHandler::with_timeout(Duration::from_millis(1000));
+
+    // Register default bindings
+    register_default_bindings(&mut input_handler.registry_mut()).unwrap();
+
+    // Register a plugin binding for Ctrl+P
+    let plugin_binding = PluginBindingBuilder::new("test-plugin")
+        .bind("Ctrl+p", "plugin_action")
+        .global()
+        .build()
+        .unwrap();
+
+    input_handler
+        .registry_mut()
+        .register_keybinding(plugin_binding)
+        .unwrap();
+
+    // Verify plugin binding works
+    let key_event = KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL);
+    let match_result = input_handler.process_key_event(key_event, EditorMode::Normal);
+
+    match match_result {
+        MatchResult::Matched(cmd) => match cmd {
+            EditorCommand::PluginCommand { plugin_name, .. } => {
+                assert_eq!(plugin_name, "test-plugin");
+            }
+            _ => panic!("Expected plugin command"),
+        },
+        _ => panic!("Plugin binding should work"),
+    }
+
+    // Now load user config that overrides the same key
+    let config_content = r#"
+        [[keybindings]]
+        sequence = "Ctrl+p"
+        command = "quit"
+    "#;
+
+    let config_file = create_temp_config(config_content);
+    let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), 1);
+
+    // User binding should now override plugin binding
+    let match_result = input_handler.process_key_event(key_event, EditorMode::Normal);
+
+    match match_result {
+        MatchResult::Matched(cmd) => {
+            assert_eq!(cmd, EditorCommand::Quit);
+            // Success! User binding overrode plugin binding
+        }
+        _ => panic!("User binding should override plugin binding"),
+    }
+}
+
+#[test]
+fn test_plugin_then_config_user_wins() {
+    use termide_plugin_api::input::{PluginBindingBuilder, PluginInputExtension};
+
+    // Plugin binding registered first, then config loads - user config should win
+    let mut input_handler = InputHandler::with_timeout(Duration::from_millis(1000));
+
+    // Register default bindings
+    register_default_bindings(&mut input_handler.registry_mut()).unwrap();
+
+    // Register plugin binding for Ctrl+T
+    let plugin_binding = PluginBindingBuilder::new("formatter")
+        .bind("Ctrl+t", "format")
+        .in_mode("normal")
+        .build()
+        .unwrap();
+
+    input_handler
+        .registry_mut()
+        .register_keybinding(plugin_binding)
+        .unwrap();
+
+    // Load user config with different command for same key
+    let config_content = r#"
+        [[keybindings]]
+        sequence = "Ctrl+t"
+        command = "delete_char"
+        mode = "normal"
+    "#;
+
+    let config_file = create_temp_config(config_content);
+    let result = load_user_keybindings(&mut input_handler.registry_mut(), config_file.path());
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), 1);
+
+    // Process Ctrl+T in Normal mode
+    let key_event = KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL);
+    let match_result = input_handler.process_key_event(key_event, EditorMode::Normal);
+
+    // Should match user binding (DeleteChar), not plugin binding
+    match match_result {
+        MatchResult::Matched(cmd) => {
+            assert_eq!(cmd, EditorCommand::DeleteChar);
+            // User config wins over plugin binding
+        }
+        _ => panic!("User config should override plugin binding"),
+    }
+}
+
+#[test]
+fn test_all_three_priority_levels() {
+    use termide_plugin_api::input::{PluginBindingBuilder, PluginInputExtension};
+
+    // Test all three priority levels: User > Plugin > Default
+    let mut input_handler = InputHandler::with_timeout(Duration::from_millis(1000));
+
+    // Register defaults
+    register_default_bindings(&mut input_handler.registry_mut()).unwrap();
+
+    // Default binding: Ctrl+S -> Save (from defaults)
+    // Plugin binding: Ctrl+S -> plugin action
+    // User binding: Ctrl+S -> Quit
+
+    // Add plugin binding
+    let plugin_binding = PluginBindingBuilder::new("override-test")
+        .bind("Ctrl+s", "plugin_save")
+        .global()
+        .build()
+        .unwrap();
+
+    input_handler
+        .registry_mut()
+        .register_keybinding(plugin_binding)
+        .unwrap();
+
+    // At this point, plugin binding should override default
+    let key_event = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+    let match_result = input_handler.process_key_event(key_event, EditorMode::Normal);
+
+    match match_result {
+        MatchResult::Matched(EditorCommand::PluginCommand { plugin_name, .. }) => {
+            assert_eq!(plugin_name, "override-test");
+        }
+        _ => panic!("Plugin should override default"),
+    }
+
+    // Now add user config
+    let config_content = r#"
+        [[keybindings]]
+        sequence = "Ctrl+s"
+        command = "quit"
+    "#;
+
+    let config_file = create_temp_config(config_content);
+    load_user_keybindings(&mut input_handler.registry_mut(), config_file.path()).unwrap();
+
+    // User binding should override both plugin and default
+    let match_result = input_handler.process_key_event(key_event, EditorMode::Normal);
+
+    match match_result {
+        MatchResult::Matched(cmd) => {
+            assert_eq!(cmd, EditorCommand::Quit);
+            // User binding wins!
+        }
+        _ => panic!("User binding should override plugin and default"),
+    }
+}

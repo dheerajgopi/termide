@@ -84,10 +84,11 @@ pub enum ConfigError {
     },
 
     /// Invalid mode in configuration
-    #[error("invalid mode '{mode}' in keybinding #{index}: valid modes are 'insert', 'normal', 'prompt'")]
+    #[error("invalid mode in keybinding #{index}: {reason}")]
     InvalidMode {
         index: usize,
         mode: String,
+        reason: String,
     },
 
     /// Binding conflict when registering
@@ -308,9 +309,10 @@ fn load_single_binding(
 
     // Parse mode if specified
     let context = if let Some(mode_str) = &user_binding.mode {
-        let mode = parse_mode(mode_str).map_err(|_| ConfigError::InvalidMode {
+        let mode = parse_mode(mode_str).map_err(|err_msg| ConfigError::InvalidMode {
             index,
             mode: mode_str.clone(),
+            reason: err_msg,
         })?;
         BindingContext::Mode(mode)
     } else {
@@ -323,6 +325,8 @@ fn load_single_binding(
 
 /// Parse a mode string (case-insensitive with whitespace trimming)
 ///
+/// This function delegates to `EditorMode::from_str` for the actual parsing.
+///
 /// # Examples
 ///
 /// ```
@@ -333,13 +337,8 @@ fn load_single_binding(
 /// assert_eq!(parse_mode("  prompt  ").unwrap(), EditorMode::Prompt);
 /// assert!(parse_mode("invalid").is_err());
 /// ```
-pub fn parse_mode(s: &str) -> Result<EditorMode, ()> {
-    match s.trim().to_lowercase().as_str() {
-        "insert" => Ok(EditorMode::Insert),
-        "normal" => Ok(EditorMode::Normal),
-        "prompt" => Ok(EditorMode::Prompt),
-        _ => Err(()),
-    }
+pub fn parse_mode(s: &str) -> Result<EditorMode, String> {
+    EditorMode::from_str(s).map_err(|e| e.to_string())
 }
 
 /// Format a key sequence parse error into a user-friendly message
