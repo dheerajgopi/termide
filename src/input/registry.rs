@@ -114,7 +114,9 @@
 use crate::editor::EditorMode;
 use crate::input::keybinding::{BindingContext, KeyBinding, KeyPattern, KeySequence, Priority};
 use crate::input::EditorCommand;
+use std::str::FromStr;
 use std::time::{Duration, Instant};
+use termide_plugin_api::input::{PluginBinding, PluginInputExtension};
 use thiserror::Error;
 
 /// Errors that can occur during keybinding registration or management
@@ -563,5 +565,157 @@ impl Default for KeyBindingRegistry {
     /// ```
     fn default() -> Self {
         Self::new(Duration::from_secs(1))
+    }
+}
+
+/// Implementation of PluginInputExtension for plugin keybinding registration
+///
+/// This implementation allows plugins to register keybindings through the
+/// plugin API. It converts plugin types (string-based) to core types (strongly-typed),
+/// validates them, and registers with Plugin priority.
+///
+/// # Examples
+///
+/// ```
+/// use termide::input::registry::KeyBindingRegistry;
+/// use termide_plugin_api::input::{PluginInputExtension, PluginBindingBuilder};
+/// use std::time::Duration;
+///
+/// let mut registry = KeyBindingRegistry::new(Duration::from_secs(1));
+///
+/// // Register a plugin binding
+/// let binding = PluginBindingBuilder::new("my-plugin")
+///     .bind("Ctrl+K", "show_info")
+///     .global()
+///     .build()
+///     .unwrap();
+///
+/// registry.register_keybinding(binding).unwrap();
+/// ```
+impl PluginInputExtension for KeyBindingRegistry {
+    fn register_keybinding(
+        &mut self,
+        binding: PluginBinding,
+    ) -> Result<(), termide_plugin_api::input::BindingError> {
+        // Convert PluginBinding (string-based) to KeyBinding (strongly-typed)
+
+        // 1. Parse the key sequence string
+        let sequence = KeySequence::from_str(&binding.sequence).map_err(|e| {
+            termide_plugin_api::input::BindingError::InvalidSequence(
+                binding.sequence.clone(),
+                e.to_string(),
+            )
+        })?;
+
+        // 2. Parse the command string
+        let command = EditorCommand::from_str(&binding.command).map_err(|_e| {
+            // For plugin commands that are properly namespaced, parsing should succeed
+            // If it doesn't, return a generic error
+            termide_plugin_api::input::BindingError::InvalidSequence(
+                binding.command.clone(),
+                "failed to parse command".to_string(),
+            )
+        })?;
+
+        // 3. Validate plugin command namespace matches expected pattern
+        // If the command is a plugin command, we can do additional validation
+        if let EditorCommand::PluginCommand { plugin_name, .. } = &command {
+            // Sanity check that the plugin name is not empty
+            // The PluginBindingBuilder already handles command namespacing,
+            // so we trust it has done its job correctly.
+            if plugin_name.is_empty() {
+                return Err(termide_plugin_api::input::BindingError::InvalidSequence(
+                    binding.command.clone(),
+                    "plugin name cannot be empty".to_string(),
+                ));
+            }
+        }
+
+        // 4. Convert BindingContext from plugin API to core type
+        let context = convert_plugin_context_to_core(binding.context);
+
+        // 5. Create KeyBinding with Plugin priority
+        let key_binding = KeyBinding::new(sequence, command, context, Priority::Plugin);
+
+        // 6. Register the binding with conflict detection
+        self.register(key_binding).map_err(|e| match e {
+            BindingError::Conflict {
+                sequence,
+                context,
+                priority,
+            } => {
+                // Check if this is a Plugin priority conflict
+                if priority == Priority::Plugin {
+                    // Extract command info from existing binding for better error message
+                    // Find the conflicting binding
+                    let existing_cmd = self
+                        .bindings
+                        .iter()
+                        .find(|b| {
+                            format!("{:?}", b.sequence()) == sequence
+                                && format!("{:?}", b.context()) == context
+                                && b.priority() == Priority::Plugin
+                        })
+                        .map(|b| format!("{:?}", b.command()))
+                        .unwrap_or_else(|| "unknown".to_string());
+
+                    termide_plugin_api::input::BindingError::Conflict {
+                        sequence: binding.sequence.clone(),
+                        existing_command: existing_cmd,
+                        plugin: "unknown".to_string(), // We don't track plugin names in core
+                    }
+                } else {
+                    // Not a plugin conflict, but shouldn't happen since we use Plugin priority
+                    termide_plugin_api::input::BindingError::InvalidSequence(
+                        binding.sequence.clone(),
+                        "unexpected conflict".to_string(),
+                    )
+                }
+            }
+            BindingError::InvalidSequence(msg) => {
+                termide_plugin_api::input::BindingError::InvalidSequence(
+                    binding.sequence.clone(),
+                    msg,
+                )
+            }
+            BindingError::InvalidContext(msg) => {
+                termide_plugin_api::input::BindingError::InvalidSequence(
+                    binding.sequence.clone(),
+                    format!("invalid context: {}", msg),
+                )
+            }
+        })
+    }
+}
+
+/// Converts a plugin API BindingContext to the core BindingContext
+///
+/// This helper function maps between the plugin API types and internal core types.
+fn convert_plugin_context_to_core(
+    plugin_context: termide_plugin_api::input::BindingContext,
+) -> BindingContext {
+    match plugin_context {
+        termide_plugin_api::input::BindingContext::Global => BindingContext::Global,
+        termide_plugin_api::input::BindingContext::Mode(mode) => {
+            BindingContext::Mode(convert_plugin_mode_to_core(mode))
+        }
+        termide_plugin_api::input::BindingContext::Modes(modes) => {
+            let core_modes = modes
+                .into_iter()
+                .map(convert_plugin_mode_to_core)
+                .collect();
+            BindingContext::Modes(core_modes)
+        }
+    }
+}
+
+/// Converts a plugin API EditorMode to the core EditorMode
+fn convert_plugin_mode_to_core(
+    plugin_mode: termide_plugin_api::input::EditorMode,
+) -> EditorMode {
+    match plugin_mode {
+        termide_plugin_api::input::EditorMode::Insert => EditorMode::Insert,
+        termide_plugin_api::input::EditorMode::Normal => EditorMode::Normal,
+        termide_plugin_api::input::EditorMode::Prompt => EditorMode::Prompt,
     }
 }

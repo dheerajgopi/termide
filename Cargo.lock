@@ -712,6 +712,7 @@ dependencies = [
  "ropey",
  "serde",
  "tempfile",
+ "termide-plugin-api",
  "thiserror",
  "toml",
 ]

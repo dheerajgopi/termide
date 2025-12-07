@@ -11,4 +11,5 @@ mod input_handler;
 mod keybinding;
 pub mod mode_transitions;
 pub mod multikey_sequences;
+mod plugin_registry;
 mod registry;
