@@ -22,9 +22,11 @@
 
 mod buffer;
 mod position;
+mod selection;
 
 pub use buffer::Buffer;
 pub use position::Position;
+pub use selection::Selection;
 
 #[cfg(test)]
 mod tests;

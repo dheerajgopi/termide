@@ -15,7 +15,7 @@
 /// assert_eq!(origin.line, 0);
 /// assert_eq!(origin.column, 0);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
     /// Line number (0-indexed)
     pub line: usize,

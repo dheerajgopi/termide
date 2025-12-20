@@ -3,6 +3,7 @@
 //! This library provides the core components for building a terminal-based text editor.
 
 pub mod buffer;
+pub mod clipboard;
 pub mod editor;
 pub mod file_io;
 pub mod input;
