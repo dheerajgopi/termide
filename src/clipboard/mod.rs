@@ -28,6 +28,10 @@
 //! }
 //! ```
 
+mod internal;
+
+pub use internal::InternalClipboard;
+
 use std::fmt;
 
 /// Error type for clipboard operations
@@ -197,3 +201,6 @@ pub trait ClipboardProvider: Send {
     /// ```
     fn set_text(&mut self, text: &str) -> Result<(), ClipboardError>;
 }
+
+#[cfg(test)]
+mod tests;
