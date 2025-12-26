@@ -29,8 +29,10 @@
 //! ```
 
 mod internal;
+mod system;
 
 pub use internal::InternalClipboard;
+pub use system::SystemClipboard;
 
 use std::fmt;
 

@@ -18,6 +18,7 @@ dirs = "6.0"
 termide-plugin-api = { path = "crates/termide-plugin-api" }
 notify = "8.2.0"
 notify-debouncer-mini = "0.7"
+copypasta = "0.8"
 
 [dev-dependencies]
 tempfile = "3.23"
