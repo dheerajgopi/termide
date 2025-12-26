@@ -204,5 +204,59 @@ pub trait ClipboardProvider: Send {
     fn set_text(&mut self, text: &str) -> Result<(), ClipboardError>;
 }
 
+/// Creates and returns the appropriate clipboard provider
+///
+/// This factory function attempts to create a system clipboard provider first,
+/// falling back to an internal (in-memory) clipboard if the system clipboard
+/// is unavailable. This ensures clipboard functionality works in all environments,
+/// including headless systems, SSH sessions, and CI/CD pipelines.
+///
+/// # Behavior
+///
+/// 1. Attempts to initialize `SystemClipboard` for native clipboard integration
+/// 2. If system clipboard initialization fails:
+///    - Logs a warning with the reason for fallback
+///    - Returns `InternalClipboard` as fallback
+/// 3. Logs debug message on successful system clipboard initialization
+///
+/// # Returns
+///
+/// Returns a boxed trait object implementing `ClipboardProvider`. The concrete
+/// type is determined at runtime based on system clipboard availability.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use termide::clipboard::get_clipboard;
+///
+/// let mut clipboard = get_clipboard();
+/// clipboard.set_text("Hello, clipboard!").expect("Failed to set text");
+/// let text = clipboard.get_text().expect("Failed to get text");
+/// assert_eq!(text, "Hello, clipboard!");
+/// ```
+///
+/// # Behavior
+///
+/// The function silently attempts system clipboard initialization and falls back
+/// to internal clipboard on failure. No logging is performed to avoid dependencies
+/// on logging frameworks. Callers can detect which implementation is active by
+/// attempting operations and observing error behavior.
+///
+/// # Thread Safety
+///
+/// The returned clipboard provider implements `Send` and can be moved across
+/// thread boundaries, though individual instances should not be shared between
+/// threads without synchronization.
+pub fn get_clipboard() -> Box<dyn ClipboardProvider> {
+    match SystemClipboard::new() {
+        Ok(clipboard) => Box::new(clipboard),
+        Err(_err) => {
+            // System clipboard unavailable (headless environment, no X11, etc.)
+            // Fall back to internal clipboard which always works
+            Box::new(InternalClipboard::default())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

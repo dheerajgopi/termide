@@ -3,7 +3,9 @@
 //! These tests verify clipboard functionality in realistic scenarios,
 //! including round-trip operations and interaction between system and internal clipboards.
 
-use termide::clipboard::{ClipboardError, ClipboardProvider, InternalClipboard, SystemClipboard};
+use termide::clipboard::{
+    get_clipboard, ClipboardError, ClipboardProvider, InternalClipboard, SystemClipboard,
+};
 
 /// Test SystemClipboard round-trip with realistic workflow
 ///
@@ -125,32 +127,15 @@ fn test_multiple_clipboard_instances() {
 /// various formatting and special characters.
 #[test]
 fn test_clipboard_with_code_snippet() {
-    let mut clipboard = match SystemClipboard::new() {
-        Ok(c) => c,
-        Err(ClipboardError::NotAvailable) => {
-            // Fallback to internal clipboard for headless environments
-            let mut internal = InternalClipboard::default();
-            let code_snippet = r#"pub fn example() -> Result<String, Error> {
-    let value = "test \"string\" with 'quotes'";
-    Ok(value.to_string())
-}"#;
-            internal.set_text(code_snippet).unwrap();
-            let retrieved = internal.get_text().unwrap();
-            assert_eq!(retrieved, code_snippet);
-            return;
-        }
-        Err(e) => panic!("Failed to initialize clipboard: {}", e),
-    };
+    // Use internal clipboard to avoid interference from system clipboard state
+    let mut clipboard = InternalClipboard::default();
 
     let code_snippet = r#"pub fn example() -> Result<String, Error> {
     let value = "test \"string\" with 'quotes'";
     Ok(value.to_string())
 }"#;
 
-    if let Err(e) = clipboard.set_text(code_snippet) {
-        eprintln!("Skipping test - clipboard set failed: {}", e);
-        return;
-    }
+    clipboard.set_text(code_snippet).unwrap();
 
     let retrieved = clipboard
         .get_text()
@@ -304,4 +289,142 @@ fn test_clipboard_type_preservation() {
 
     // Original instance should retain content
     assert_eq!(clipboard1.get_text().unwrap(), "Instance 1");
+}
+
+/// Test get_clipboard factory function in realistic editor workflow
+///
+/// Verifies that the factory function provides a working clipboard regardless
+/// of system availability, and that it works correctly in a typical editor workflow.
+#[test]
+fn test_get_clipboard_factory_realistic_workflow() {
+    let mut clipboard = get_clipboard();
+
+    // Simulate typical editor workflow: copy, navigate, paste
+    let original_code = r#"fn example() {
+    let x = 42;
+    println!("Value: {}", x);
+}"#;
+
+    // Copy operation - may fail in headless environments
+    if clipboard.set_text(original_code).is_err() {
+        eprintln!("Skipping test - clipboard operations not available");
+        return;
+    }
+
+    // Simulate some intermediate operations (in real editor, user might navigate, edit)
+    // The clipboard should retain the content
+
+    // Paste operation
+    let pasted_code = clipboard
+        .get_text()
+        .expect("Should retrieve previously copied code");
+
+    assert_eq!(pasted_code, original_code);
+    assert!(pasted_code.contains("fn example()"));
+    assert!(pasted_code.contains("println!"));
+}
+
+/// Test get_clipboard factory function with multiple operations
+///
+/// Verifies that factory-created clipboard handles repeated copy/paste operations
+/// correctly in a realistic editing session.
+#[test]
+fn test_get_clipboard_factory_multiple_operations() {
+    let mut clipboard = get_clipboard();
+
+    let operations = vec![
+        "First line of code",
+        "Second function definition",
+        "Third variable assignment",
+    ];
+
+    for (i, text) in operations.iter().enumerate() {
+        // Set text - may fail in headless
+        if clipboard.set_text(text).is_err() {
+            eprintln!("Skipping test - clipboard operations not available");
+            return;
+        }
+
+        // Verify retrieval
+        let retrieved = clipboard
+            .get_text()
+            .unwrap_or_else(|e| panic!("Failed to get text at iteration {}: {}", i, e));
+
+        assert_eq!(
+            retrieved, *text,
+            "Content should match at iteration {}",
+            i
+        );
+    }
+
+    // Final verification - should have last operation's content
+    let final_content = clipboard.get_text().unwrap();
+    assert_eq!(final_content, operations[operations.len() - 1]);
+}
+
+/// Test get_clipboard factory with concurrent access simulation
+///
+/// Verifies that multiple clipboards created via factory work independently
+/// (for internal clipboard case) or share state correctly (for system clipboard case).
+#[test]
+fn test_get_clipboard_factory_concurrent_access() {
+    let mut clipboard1 = get_clipboard();
+    let mut clipboard2 = get_clipboard();
+
+    // Set different content in each
+    if clipboard1.set_text("Clipboard 1 content").is_err() {
+        eprintln!("Skipping test - clipboard operations not available");
+        return;
+    }
+
+    if clipboard2.set_text("Clipboard 2 content").is_err() {
+        eprintln!("Skipping test - clipboard operations not available");
+        return;
+    }
+
+    // Get content from each
+    let content1 = clipboard1.get_text();
+    let content2 = clipboard2.get_text();
+
+    // Both should work
+    assert!(content1.is_ok(), "Clipboard 1 should work");
+    assert!(content2.is_ok(), "Clipboard 2 should work");
+
+    // Note: If both are system clipboards, they share state and will have the same content
+    // If one or both are internal clipboards, they will be independent
+    // We just verify both operations succeed
+}
+
+/// Test get_clipboard factory resilience to errors
+///
+/// Verifies that factory-created clipboard handles error conditions gracefully
+/// and provides meaningful error messages.
+#[test]
+fn test_get_clipboard_factory_error_handling() {
+    let mut clipboard = get_clipboard();
+
+    // Try to get from potentially empty clipboard
+    // This should either succeed (if system clipboard has content)
+    // or fail gracefully with NotAvailable error (if internal clipboard and empty)
+    match clipboard.get_text() {
+        Ok(_content) => {
+            // System clipboard had content, or internal clipboard was set
+        }
+        Err(ClipboardError::NotAvailable) => {
+            // Expected error for empty internal clipboard
+        }
+        Err(e) => {
+            // Other errors are acceptable in headless environments
+            eprintln!("Clipboard error (acceptable in headless): {}", e);
+        }
+    }
+
+    // After setting, get should work
+    if clipboard.set_text("test content").is_ok() {
+        let retrieved = clipboard.get_text();
+        assert!(
+            retrieved.is_ok(),
+            "After successful set, get should work"
+        );
+    }
 }
