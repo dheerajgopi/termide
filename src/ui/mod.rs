@@ -11,11 +11,20 @@
 //! - Automatic scrolling: keeps cursor in view
 //! - Status bar with file info, mode, and position
 //! - Status messages with color coding
+//! - Theming support with customizable colors
+//!
+//! # Theme System
+//!
+//! The UI module includes a theme system that provides:
+//! - Selection highlighting colors (active and inactive)
+//! - Status bar colors
+//! - Status message colors (error, warning, info, success)
+//! - Default dark and light themes
 //!
 //! # Examples
 //!
 //! ```no_run
-//! use termide::ui::Renderer;
+//! use termide::ui::{Renderer, Theme};
 //! use termide::editor::EditorState;
 //! use termide::buffer::Position;
 //!
@@ -34,8 +43,10 @@
 //! ```
 
 mod renderer;
+mod theme;
 
 pub use renderer::Renderer;
+pub use theme::Theme;
 
 #[cfg(test)]
 mod tests;

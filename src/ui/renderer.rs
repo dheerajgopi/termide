@@ -10,13 +10,14 @@ use crossterm::{
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::Line,
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame, Terminal,
 };
 
 use crate::{buffer::Position, editor::EditorState};
+use super::Theme;
 
 /// Renders a single frame (standalone function to avoid borrow checker issues)
 fn render_frame_impl(
@@ -24,6 +25,7 @@ fn render_frame_impl(
     state: &EditorState,
     cursor_pos: Position,
     scroll_offset: usize,
+    theme: &Theme,
 ) {
     use crate::editor::EditorMode;
 
@@ -42,7 +44,7 @@ fn render_frame_impl(
     render_text_area(frame, chunks[0], state, scroll_offset);
 
     // Render status bar
-    render_status_bar(frame, chunks[1], state, cursor_pos);
+    render_status_bar(frame, chunks[1], state, cursor_pos, theme);
 
     // Set cursor position
     if state.mode() == EditorMode::Prompt {
@@ -93,7 +95,13 @@ fn render_text_area(
 }
 
 /// Renders the status bar and status message
-fn render_status_bar(frame: &mut Frame, area: Rect, state: &EditorState, cursor_pos: Position) {
+fn render_status_bar(
+    frame: &mut Frame,
+    area: Rect,
+    state: &EditorState,
+    cursor_pos: Position,
+    theme: &Theme,
+) {
     use crate::editor::EditorMode;
 
     // Split status area into bar and message
@@ -124,8 +132,8 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &EditorState, cursor_
 
     let status_bar = Paragraph::new(status_line).style(
         Style::default()
-            .bg(Color::DarkGray)
-            .fg(Color::White)
+            .bg(theme.status_bar_bg)
+            .fg(theme.status_bar_fg)
             .add_modifier(Modifier::BOLD),
     );
 
@@ -137,21 +145,26 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &EditorState, cursor_
         let prompt_text = format!("{}{}", state.prompt_message(), state.prompt_input());
         let prompt_widget = Paragraph::new(prompt_text).style(
             Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD)
+                .fg(theme.prompt_fg)
+                .add_modifier(Modifier::BOLD),
         );
         frame.render_widget(prompt_widget, chunks[1]);
     } else if let Some(message) = state.status_message() {
         // Render status message with appropriate color based on type
-        let message_style = if message.starts_with("Error:") || message.starts_with("Warning:") {
-            // Errors and warnings in red
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+        let message_style = if message.starts_with("Error:") {
+            // Errors in error color
+            Style::default().fg(theme.error).add_modifier(Modifier::BOLD)
+        } else if message.starts_with("Warning:") {
+            // Warnings in warning color
+            Style::default()
+                .fg(theme.warning)
+                .add_modifier(Modifier::BOLD)
         } else if message.starts_with("Info:") {
-            // Informational messages in cyan
-            Style::default().fg(Color::Cyan)
+            // Informational messages in info color
+            Style::default().fg(theme.info)
         } else {
-            // Success messages in green
-            Style::default().fg(Color::Green)
+            // Success messages in success color
+            Style::default().fg(theme.success)
         };
 
         let status_message = Paragraph::new(message).style(message_style);
@@ -191,6 +204,7 @@ fn calculate_cursor_screen_position(
 /// - Status bar with file info and mode
 /// - Status messages
 /// - Terminal resize handling
+/// - Theming support with customizable colors
 ///
 /// # Performance
 ///
@@ -224,12 +238,15 @@ pub struct Renderer {
     scroll_offset: usize,
     /// Previous frame hash for dirty checking
     last_frame_hash: u64,
+    /// Theme for UI styling
+    theme: Theme,
 }
 
 impl Renderer {
-    /// Creates a new renderer and initializes the terminal
+    /// Creates a new renderer and initializes the terminal with the default theme
     ///
-    /// This sets up the terminal in raw mode and alternate screen.
+    /// This sets up the terminal in raw mode and alternate screen with the
+    /// default dark theme.
     ///
     /// # Errors
     ///
@@ -248,6 +265,36 @@ impl Renderer {
     /// # }
     /// ```
     pub fn new() -> Result<Self> {
+        Self::with_theme(Theme::default())
+    }
+
+    /// Creates a new renderer with a custom theme
+    ///
+    /// This sets up the terminal in raw mode and alternate screen with
+    /// the specified theme.
+    ///
+    /// # Arguments
+    ///
+    /// * `theme` - The theme to use for rendering
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the terminal cannot be initialized.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use termide::ui::{Renderer, Theme};
+    ///
+    /// # fn main() -> anyhow::Result<()> {
+    /// let light_theme = Theme::light();
+    /// let mut renderer = Renderer::with_theme(light_theme)?;
+    /// // Use renderer...
+    /// renderer.restore_terminal()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_theme(theme: Theme) -> Result<Self> {
         enable_raw_mode().context("Failed to enable raw mode")?;
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen).context("Failed to enter alternate screen")?;
@@ -259,6 +306,7 @@ impl Renderer {
             terminal,
             scroll_offset: 0,
             last_frame_hash: 0,
+            theme,
         })
     }
 
@@ -323,12 +371,13 @@ impl Renderer {
         let terminal_height = self.terminal.size()?.height as usize;
         self.adjust_scroll(cursor_pos, terminal_height);
 
-        // Capture scroll_offset before the closure
+        // Capture scroll_offset and theme before the closure
         let scroll_offset = self.scroll_offset;
+        let theme = &self.theme;
 
         self.terminal
             .draw(|f| {
-                render_frame_impl(f, state, cursor_pos, scroll_offset);
+                render_frame_impl(f, state, cursor_pos, scroll_offset, theme);
             })
             .context("Failed to draw frame")?;
 
@@ -417,6 +466,49 @@ impl Renderer {
     /// Forces the next frame to render regardless of dirty checking
     pub fn force_render(&mut self) {
         self.last_frame_hash = 0;
+    }
+
+    /// Returns a reference to the current theme
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use termide::ui::Renderer;
+    /// use ratatui::style::Color;
+    ///
+    /// # fn main() -> anyhow::Result<()> {
+    /// let renderer = Renderer::new()?;
+    /// let selection_color = renderer.theme().selection;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn theme(&self) -> &Theme {
+        &self.theme
+    }
+
+    /// Sets a new theme for rendering
+    ///
+    /// This replaces the current theme and forces a re-render on the next
+    /// render call.
+    ///
+    /// # Arguments
+    ///
+    /// * `theme` - The new theme to use
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use termide::ui::{Renderer, Theme};
+    ///
+    /// # fn main() -> anyhow::Result<()> {
+    /// let mut renderer = Renderer::new()?;
+    /// renderer.set_theme(Theme::light());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn set_theme(&mut self, theme: Theme) {
+        self.theme = theme;
+        self.force_render(); // Force re-render with new theme
     }
 }
 
