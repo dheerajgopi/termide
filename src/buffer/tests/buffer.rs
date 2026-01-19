@@ -414,3 +414,458 @@ fn test_page_navigation_single_line() {
     let new_pos = buffer.page_down(Position { line: 0, column: 5 }, 5);
     assert_eq!(new_pos, Position { line: 0, column: 5 });
 }
+
+// ==================== Selection Tests ====================
+
+use crate::buffer::Selection;
+
+#[test]
+fn test_buffer_new_has_no_selection() {
+    let buffer = Buffer::new();
+    assert!(buffer.selection().is_none());
+    assert!(!buffer.has_selection());
+}
+
+#[test]
+fn test_buffer_from_str_has_no_selection() {
+    let buffer = Buffer::from_str("Hello World");
+    assert!(buffer.selection().is_none());
+    assert!(!buffer.has_selection());
+}
+
+#[test]
+fn test_selection_getter() {
+    let mut buffer = Buffer::from_str("Hello World");
+    assert!(buffer.selection().is_none());
+
+    let sel = Selection::with_anchor_and_cursor(Position::new(0, 0), Position::new(0, 5));
+    buffer.set_selection(Some(sel));
+
+    assert!(buffer.selection().is_some());
+    let selection = buffer.selection().unwrap();
+    assert_eq!(selection.anchor(), Position::new(0, 0));
+    assert_eq!(selection.cursor(), Position::new(0, 5));
+}
+
+#[test]
+fn test_set_selection_some() {
+    let mut buffer = Buffer::from_str("Hello");
+    let sel = Selection::with_anchor_and_cursor(Position::new(0, 0), Position::new(0, 3));
+    buffer.set_selection(Some(sel));
+
+    assert!(buffer.has_selection());
+}
+
+#[test]
+fn test_set_selection_none_clears() {
+    let mut buffer = Buffer::from_str("Hello");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 3),
+    )));
+    assert!(buffer.has_selection());
+
+    buffer.set_selection(None);
+    assert!(!buffer.has_selection());
+    assert!(buffer.selection().is_none());
+}
+
+#[test]
+fn test_has_selection_no_selection() {
+    let buffer = Buffer::from_str("Hello");
+    assert!(!buffer.has_selection());
+}
+
+#[test]
+fn test_has_selection_collapsed() {
+    let mut buffer = Buffer::from_str("Hello");
+    buffer.set_selection(Some(Selection::new(Position::origin())));
+    // Collapsed selection means no actual text selected
+    assert!(!buffer.has_selection());
+}
+
+#[test]
+fn test_has_selection_active() {
+    let mut buffer = Buffer::from_str("Hello");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 5),
+    )));
+    assert!(buffer.has_selection());
+}
+
+#[test]
+fn test_selected_text_no_selection() {
+    let buffer = Buffer::from_str("Hello World");
+    assert_eq!(buffer.selected_text(), None);
+}
+
+#[test]
+fn test_selected_text_collapsed_selection() {
+    let mut buffer = Buffer::from_str("Hello World");
+    buffer.set_selection(Some(Selection::new(Position::new(0, 3))));
+    assert_eq!(buffer.selected_text(), None);
+}
+
+#[test]
+fn test_selected_text_single_char() {
+    let mut buffer = Buffer::from_str("Hello");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 1),
+    )));
+    assert_eq!(buffer.selected_text(), Some("H".to_string()));
+}
+
+#[test]
+fn test_selected_text_single_word() {
+    let mut buffer = Buffer::from_str("Hello World");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 5),
+    )));
+    assert_eq!(buffer.selected_text(), Some("Hello".to_string()));
+}
+
+#[test]
+fn test_selected_text_mid_line() {
+    let mut buffer = Buffer::from_str("Hello World");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 3),
+        Position::new(0, 8),
+    )));
+    assert_eq!(buffer.selected_text(), Some("lo Wo".to_string()));
+}
+
+#[test]
+fn test_selected_text_entire_line() {
+    let mut buffer = Buffer::from_str("Hello");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 5),
+    )));
+    assert_eq!(buffer.selected_text(), Some("Hello".to_string()));
+}
+
+#[test]
+fn test_selected_text_multiline() {
+    let mut buffer = Buffer::from_str("Line1\nLine2\nLine3");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(1, 5),
+    )));
+    assert_eq!(buffer.selected_text(), Some("Line1\nLine2".to_string()));
+}
+
+#[test]
+fn test_selected_text_multiline_partial() {
+    let mut buffer = Buffer::from_str("Hello\nWorld\nFoo");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 3),
+        Position::new(1, 3),
+    )));
+    assert_eq!(buffer.selected_text(), Some("lo\nWor".to_string()));
+}
+
+#[test]
+fn test_selected_text_multiline_spans_three_lines() {
+    let mut buffer = Buffer::from_str("Line1\nLine2\nLine3");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 2),
+        Position::new(2, 3),
+    )));
+    assert_eq!(buffer.selected_text(), Some("ne1\nLine2\nLin".to_string()));
+}
+
+#[test]
+fn test_selected_text_backward_selection() {
+    let mut buffer = Buffer::from_str("Hello");
+    // Backward selection (cursor before anchor)
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 5),
+        Position::new(0, 0),
+    )));
+    assert_eq!(buffer.selected_text(), Some("Hello".to_string()));
+}
+
+#[test]
+fn test_selected_text_entire_buffer() {
+    let mut buffer = Buffer::from_str("Hello\nWorld");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(1, 5),
+    )));
+    assert_eq!(buffer.selected_text(), Some("Hello\nWorld".to_string()));
+}
+
+#[test]
+fn test_selected_text_preserves_newlines() {
+    let mut buffer = Buffer::from_str("A\nB\nC");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(2, 1),
+    )));
+    assert_eq!(buffer.selected_text(), Some("A\nB\nC".to_string()));
+}
+
+#[test]
+fn test_selected_text_unicode() {
+    let mut buffer = Buffer::from_str("Hello 世界");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 6),
+        Position::new(0, 8),
+    )));
+    assert_eq!(buffer.selected_text(), Some("世界".to_string()));
+}
+
+#[test]
+fn test_selected_text_empty_buffer() {
+    let mut buffer = Buffer::new();
+    // Even with a selection set, empty buffer returns None
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 1),
+    )));
+    // Selection is clamped to buffer bounds, resulting in no actual selection
+    assert_eq!(buffer.selected_text(), None);
+}
+
+#[test]
+fn test_delete_selection_no_selection() {
+    let mut buffer = Buffer::from_str("Hello");
+    assert!(!buffer.delete_selection());
+    assert_eq!(buffer.content(), "Hello");
+    assert!(!buffer.is_dirty());
+}
+
+#[test]
+fn test_delete_selection_collapsed() {
+    let mut buffer = Buffer::from_str("Hello");
+    buffer.set_selection(Some(Selection::new(Position::new(0, 2))));
+    assert!(!buffer.delete_selection());
+    assert_eq!(buffer.content(), "Hello");
+}
+
+#[test]
+fn test_delete_selection_single_char() {
+    let mut buffer = Buffer::from_str("Hello");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 1),
+    )));
+
+    assert!(buffer.delete_selection());
+    assert_eq!(buffer.content(), "ello");
+    assert!(buffer.is_dirty());
+    assert!(!buffer.has_selection());
+}
+
+#[test]
+fn test_delete_selection_word() {
+    let mut buffer = Buffer::from_str("Hello World");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 5),
+    )));
+
+    assert!(buffer.delete_selection());
+    assert_eq!(buffer.content(), " World");
+}
+
+#[test]
+fn test_delete_selection_mid_line() {
+    let mut buffer = Buffer::from_str("Hello World");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 2),
+        Position::new(0, 8),
+    )));
+
+    assert!(buffer.delete_selection());
+    assert_eq!(buffer.content(), "Herld");
+}
+
+#[test]
+fn test_delete_selection_multiline() {
+    let mut buffer = Buffer::from_str("Line1\nLine2\nLine3");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(1, 5),
+    )));
+
+    assert!(buffer.delete_selection());
+    assert_eq!(buffer.content(), "\nLine3");
+}
+
+#[test]
+fn test_delete_selection_multiline_partial() {
+    let mut buffer = Buffer::from_str("Hello\nWorld\nFoo");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 3),
+        Position::new(1, 3),
+    )));
+
+    assert!(buffer.delete_selection());
+    assert_eq!(buffer.content(), "Helld\nFoo");
+}
+
+#[test]
+fn test_delete_selection_entire_buffer() {
+    let mut buffer = Buffer::from_str("Hello\nWorld");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(1, 5),
+    )));
+
+    assert!(buffer.delete_selection());
+    assert_eq!(buffer.content(), "");
+}
+
+#[test]
+fn test_delete_selection_backward() {
+    let mut buffer = Buffer::from_str("Hello");
+    // Backward selection (cursor before anchor)
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 5),
+        Position::new(0, 0),
+    )));
+
+    assert!(buffer.delete_selection());
+    assert_eq!(buffer.content(), "");
+}
+
+#[test]
+fn test_delete_selection_clears_selection() {
+    let mut buffer = Buffer::from_str("Hello");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 2),
+    )));
+
+    assert!(buffer.delete_selection());
+    assert!(buffer.selection().is_none());
+    assert!(!buffer.has_selection());
+}
+
+#[test]
+fn test_delete_selection_sets_dirty() {
+    let mut buffer = Buffer::from_str("Hello");
+    buffer.clear_dirty();
+    assert!(!buffer.is_dirty());
+
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 2),
+    )));
+
+    assert!(buffer.delete_selection());
+    assert!(buffer.is_dirty());
+}
+
+#[test]
+fn test_delete_selection_unicode() {
+    let mut buffer = Buffer::from_str("Hello 世界 World");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 6),
+        Position::new(0, 9),
+    )));
+
+    assert!(buffer.delete_selection());
+    assert_eq!(buffer.content(), "Hello World");
+}
+
+#[test]
+fn test_delete_selection_empty_buffer_returns_false() {
+    let mut buffer = Buffer::new();
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 5),
+    )));
+    // Selection on empty buffer can't delete anything meaningful
+    assert!(!buffer.delete_selection());
+}
+
+#[test]
+fn test_delete_selection_then_no_selection_returns_false() {
+    let mut buffer = Buffer::from_str("Hello");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 2),
+    )));
+
+    // First delete succeeds
+    assert!(buffer.delete_selection());
+    assert_eq!(buffer.content(), "llo");
+
+    // Second delete fails (no selection)
+    assert!(!buffer.delete_selection());
+    assert_eq!(buffer.content(), "llo");
+}
+
+#[test]
+fn test_end_position_empty_buffer() {
+    let buffer = Buffer::new();
+    assert_eq!(buffer.end_position(), Position::new(0, 0));
+}
+
+#[test]
+fn test_end_position_single_line() {
+    let buffer = Buffer::from_str("Hello");
+    assert_eq!(buffer.end_position(), Position::new(0, 5));
+}
+
+#[test]
+fn test_end_position_multiline() {
+    let buffer = Buffer::from_str("Hello\nWorld");
+    assert_eq!(buffer.end_position(), Position::new(1, 5));
+}
+
+#[test]
+fn test_end_position_with_trailing_newline() {
+    let buffer = Buffer::from_str("Hello\nWorld\n");
+    // Buffer has 3 lines, last line is empty
+    assert_eq!(buffer.end_position(), Position::new(2, 0));
+}
+
+#[test]
+fn test_selection_persists_after_insert() {
+    let mut buffer = Buffer::from_str("Hello");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 3),
+    )));
+
+    // Insert char at different position
+    buffer.insert_char('X', Position::new(0, 5));
+
+    // Selection should still exist (though positions may be invalidated in real editor)
+    assert!(buffer.selection().is_some());
+}
+
+#[test]
+fn test_selection_persists_after_delete() {
+    let mut buffer = Buffer::from_str("Hello World");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 5),
+    )));
+
+    // Delete char at different position (after selection)
+    buffer.delete_char_at(Position::new(0, 10));
+
+    // Selection should still exist
+    assert!(buffer.selection().is_some());
+}
+
+#[test]
+fn test_selection_not_in_clone() {
+    // Clone should include selection state
+    let mut buffer = Buffer::from_str("Hello");
+    buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+        Position::new(0, 0),
+        Position::new(0, 3),
+    )));
+
+    let cloned = buffer.clone();
+    assert!(cloned.has_selection());
+    assert_eq!(cloned.selected_text(), Some("Hel".to_string()));
+}

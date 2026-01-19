@@ -4,6 +4,7 @@ use ropey::Rope;
 use std::path::PathBuf;
 
 use super::Position;
+use super::Selection;
 
 /// The main text buffer using Rope for efficient text operations
 ///
@@ -43,6 +44,8 @@ pub struct Buffer {
     file_path: Option<PathBuf>,
     /// Flag indicating if the buffer has unsaved changes
     dirty: bool,
+    /// Current text selection (transient, not persisted to disk)
+    selection: Option<Selection>,
 }
 
 impl Buffer {
@@ -62,6 +65,7 @@ impl Buffer {
             rope: Rope::new(),
             file_path: None,
             dirty: false,
+            selection: None,
         }
     }
 
@@ -81,6 +85,7 @@ impl Buffer {
             rope: Rope::from_str(content),
             file_path: None,
             dirty: false,
+            selection: None,
         }
     }
 
@@ -444,6 +449,223 @@ impl Buffer {
     /// Checks if the buffer is empty
     pub fn is_empty(&self) -> bool {
         self.rope.len_chars() == 0
+    }
+
+    // ==================== Selection Methods ====================
+
+    /// Returns a reference to the current selection, if any.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::buffer::{Buffer, Position, Selection};
+    ///
+    /// let mut buffer = Buffer::from_str("Hello World");
+    /// assert!(buffer.selection().is_none());
+    ///
+    /// buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+    ///     Position::new(0, 0),
+    ///     Position::new(0, 5)
+    /// )));
+    /// assert!(buffer.selection().is_some());
+    /// ```
+    pub fn selection(&self) -> Option<&Selection> {
+        self.selection.as_ref()
+    }
+
+    /// Sets the current selection.
+    ///
+    /// Pass `None` to clear the selection. Selection state is transient
+    /// and is not persisted when the buffer is saved to disk.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::buffer::{Buffer, Position, Selection};
+    ///
+    /// let mut buffer = Buffer::from_str("Hello World");
+    ///
+    /// // Set a selection
+    /// buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+    ///     Position::new(0, 0),
+    ///     Position::new(0, 5)
+    /// )));
+    /// assert!(buffer.has_selection());
+    ///
+    /// // Clear the selection
+    /// buffer.set_selection(None);
+    /// assert!(!buffer.has_selection());
+    /// ```
+    pub fn set_selection(&mut self, selection: Option<Selection>) {
+        self.selection = selection;
+    }
+
+    /// Returns true if there is an active selection with text selected.
+    ///
+    /// Returns false if there is no selection or if the selection is collapsed
+    /// (anchor equals cursor).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::buffer::{Buffer, Position, Selection};
+    ///
+    /// let mut buffer = Buffer::from_str("Hello");
+    /// assert!(!buffer.has_selection());
+    ///
+    /// // Collapsed selection (no text selected)
+    /// buffer.set_selection(Some(Selection::new(Position::origin())));
+    /// assert!(!buffer.has_selection());
+    ///
+    /// // Active selection with text
+    /// buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+    ///     Position::new(0, 0),
+    ///     Position::new(0, 5)
+    /// )));
+    /// assert!(buffer.has_selection());
+    /// ```
+    pub fn has_selection(&self) -> bool {
+        self.selection
+            .as_ref()
+            .map(|s| s.has_selection())
+            .unwrap_or(false)
+    }
+
+    /// Returns the selected text as a String, if there is an active selection.
+    ///
+    /// Returns `None` if there is no selection or if the selection is collapsed.
+    /// Multi-line selections include newline characters.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::buffer::{Buffer, Position, Selection};
+    ///
+    /// let mut buffer = Buffer::from_str("Hello World");
+    /// buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+    ///     Position::new(0, 0),
+    ///     Position::new(0, 5)
+    /// )));
+    /// assert_eq!(buffer.selected_text(), Some("Hello".to_string()));
+    ///
+    /// // Multi-line selection
+    /// let mut buffer = Buffer::from_str("Line1\nLine2\nLine3");
+    /// buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+    ///     Position::new(0, 0),
+    ///     Position::new(1, 5)
+    /// )));
+    /// assert_eq!(buffer.selected_text(), Some("Line1\nLine2".to_string()));
+    /// ```
+    pub fn selected_text(&self) -> Option<String> {
+        let selection = self.selection.as_ref()?;
+        if !selection.has_selection() {
+            return None;
+        }
+
+        let (start, end) = selection.range();
+
+        // Clamp positions to buffer bounds
+        let start = self.clamp_position(start);
+        let end = self.clamp_position(end);
+
+        // Convert positions to character indices
+        let start_idx = self.position_to_char_idx(start)?;
+        let end_idx = self.position_to_char_idx(end)?;
+
+        // Handle edge case where end is at EOF
+        let end_idx = end_idx.min(self.rope.len_chars());
+
+        if start_idx >= end_idx {
+            return None;
+        }
+
+        Some(self.rope.slice(start_idx..end_idx).to_string())
+    }
+
+    /// Deletes the selected text range and clears the selection.
+    ///
+    /// Returns `true` if text was deleted, `false` if there was no selection
+    /// or the operation failed. Sets the dirty flag if text was deleted.
+    ///
+    /// Note: Currently does not integrate with undo/redo system as it hasn't
+    /// been implemented yet. Undo integration will be added in a future task.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::buffer::{Buffer, Position, Selection};
+    ///
+    /// let mut buffer = Buffer::from_str("Hello World");
+    /// buffer.set_selection(Some(Selection::with_anchor_and_cursor(
+    ///     Position::new(0, 0),
+    ///     Position::new(0, 5)
+    /// )));
+    ///
+    /// assert!(buffer.delete_selection());
+    /// assert_eq!(buffer.content(), " World");
+    /// assert!(buffer.is_dirty());
+    /// assert!(!buffer.has_selection());
+    ///
+    /// // No selection - returns false
+    /// assert!(!buffer.delete_selection());
+    /// ```
+    pub fn delete_selection(&mut self) -> bool {
+        let selection = match self.selection.take() {
+            Some(s) if s.has_selection() => s,
+            _ => return false,
+        };
+
+        let (start, end) = selection.range();
+
+        // Clamp positions to buffer bounds
+        let start = self.clamp_position(start);
+        let end = self.clamp_position(end);
+
+        // Convert positions to character indices
+        let start_idx = match self.position_to_char_idx(start) {
+            Some(idx) => idx,
+            None => return false,
+        };
+
+        let end_idx = match self.position_to_char_idx(end) {
+            Some(idx) => idx,
+            None => return false,
+        };
+
+        // Handle edge case where end is at EOF
+        let end_idx = end_idx.min(self.rope.len_chars());
+
+        if start_idx >= end_idx {
+            return false;
+        }
+
+        // Delete the selected range
+        self.rope.remove(start_idx..end_idx);
+        self.dirty = true;
+
+        // Selection is already cleared (we used take())
+        true
+    }
+
+    /// Returns the position of the buffer end (last line, last column).
+    ///
+    /// Useful for operations like "select all" that need to know the buffer bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use termide::buffer::{Buffer, Position};
+    ///
+    /// let buffer = Buffer::from_str("Hello\nWorld");
+    /// assert_eq!(buffer.end_position(), Position::new(1, 5));
+    ///
+    /// let empty = Buffer::new();
+    /// assert_eq!(empty.end_position(), Position::new(0, 0));
+    /// ```
+    pub fn end_position(&self) -> Position {
+        let last_line = self.rope.len_lines().saturating_sub(1);
+        let last_column = self.line_len(last_line).unwrap_or(0);
+        Position::new(last_line, last_column)
     }
 }
 
